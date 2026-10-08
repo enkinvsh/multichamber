@@ -1,0 +1,42 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "gemini/gemini-3.8-flash-high",
+  "small_model": "gemini/gemini-3.7-flash-high",
+  "autoupdate": false,
+  "share": "disabled",
+  "enabled_providers": [
+    "gemini"
+  ],
+  "provider": {
+    "gemini": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Gemini",
+      "options": {
+        "baseURL": "{env:MULTICHAMBER_LLM_BASE_URL}",
+        "apiKey": "{env:MULTICHAMBER_LLM_KEY}"
+      },
+      "models": {
+        "gemini-3.8-flash-high": {
+          "name": "Gemini 3.8 Flash",
+          "reasoning": true,
+          "attachment": true,
+          "tool_call": true,
+          "limit": {
+            "context": 1000000,
+            "output": 65536
+          }
+        },
+        "gemini-3.7-flash-high": {
+          "name": "Gemini 3.7 Flash",
+          "reasoning": true,
+          "attachment": true,
+          "tool_call": true,
+          "limit": {
+            "context": 1000000,
+            "output": 65536
+          }
+        }
+      }
+    }
+  }
+}

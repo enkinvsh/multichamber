@@ -20,6 +20,7 @@ import { useDeviceInfo } from '@/lib/device';
 import { buildIssueContextText, startLinearIssueSession } from '@/lib/linearStartSession';
 import type { LinearIssueSummary, LinearMappingResult } from '@/lib/api/types';
 import { useI18n } from '@/lib/i18n';
+import { useMultichamberLockdown } from '@/lib/multichamber/lockdown';
 
 const parseLinearIssueQuery = (value: string): string | null => {
   const trimmed = value.trim();
@@ -192,6 +193,7 @@ export function LinearIssuePickerDialog({
     }
   }, [cursor, debouncedQuery, hasMore, isLoading, isLoadingMore, linear, t]);
 
+  const multichamberLockdown = useMultichamberLockdown();
   const openLinearSettings = React.useCallback(() => {
     setSettingsPage('integrations');
     setSettingsDialogOpen(true);
@@ -305,9 +307,9 @@ export function LinearIssuePickerDialog({
           <div className="text-center text-muted-foreground py-8 space-y-3">
             <div>{t('session.linearIssuePicker.empty.notConnected')}</div>
             <div className="flex justify-center">
-              <Button variant="outline" size="sm" onClick={openLinearSettings}>
+              {multichamberLockdown ? null : (<Button variant="outline" size="sm" onClick={openLinearSettings}>
                 {t('session.linearIssuePicker.actions.openSettings')}
-              </Button>
+              </Button>)}
             </div>
           </div>
         ) : null}

@@ -50,6 +50,7 @@ import {
 } from '@/lib/messages/userModelChoice';
 import { getSyncParts } from '@/sync/sync-refs';
 import type { BtwSelection } from '@/stores/useBtwStore';
+import { useMultichamberLockdown } from '@/lib/multichamber/lockdown';
 
 type IconComponent = IconName;
 
@@ -483,6 +484,7 @@ export const ModelControls: React.FC<ModelControlsProps> = ({
     // Use global state for model selector (allows Ctrl+M shortcut)
     const agentMenuOpen = isModelSelectorOpen;
     const setAgentMenuOpen = selection ? setLocalModelSelectorOpen : setModelSelectorOpen;
+    const multichamberLockdown = useMultichamberLockdown();
     const openAddProviderSettings = React.useCallback(() => {
         setSelectedProvider(ADD_PROVIDER_ID);
         setSettingsPage('providers');
@@ -2481,7 +2483,7 @@ export const ModelControls: React.FC<ModelControlsProps> = ({
                             collisionAvoidance={{ side: 'none', align: 'shift' }}
                             onKeyDownCapture={handleModelShortcutKeyDownCapture}
                         >
-                            {!selection && <div className="p-1 border-b border-border/40">
+                            {!selection && !multichamberLockdown && <div className="p-1 border-b border-border/40">
                                 <button
                                     type="button"
                                     onClick={openAddProviderSettings}

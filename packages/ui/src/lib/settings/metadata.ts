@@ -43,6 +43,8 @@ export interface SettingsRuntimeContext {
   isMobile: boolean;
   /** Whether this server build has Jev routing (`OPENCHAMBER_ROUTING_ENABLE`). */
   routingAvailable: boolean;
+  /** Whether the server runs in MultiChamber lockdown (`GET /api/multichamber/policy`). */
+  multichamberLockdown: boolean;
 }
 
 export interface SettingsPageMeta {
@@ -55,7 +57,7 @@ export interface SettingsPageMeta {
   isAvailable?: (ctx: SettingsRuntimeContext) => boolean;
 }
 
-export const SETTINGS_PAGE_METADATA: readonly SettingsPageMeta[] = [
+const BASE_SETTINGS_PAGE_METADATA: readonly SettingsPageMeta[] = [
   {
     slug: 'home',
     title: 'Settings',
@@ -225,6 +227,38 @@ export const SETTINGS_PAGE_METADATA: readonly SettingsPageMeta[] = [
     isAvailable: (ctx) => !ctx.isVSCode && !ctx.isMobile,
   },
 ] as const;
+
+/**
+ * Pages hidden in MultiChamber lockdown: the container owns providers, keys,
+ * quotas, MCP, plugins, tunnels, updates, integrations and instance settings.
+ */
+const MULTICHAMBER_LOCKED_SETTINGS_PAGES: ReadonlySet<SettingsPageSlug> = new Set<SettingsPageSlug>([
+  'general',
+  'remote-instances',
+  'providers',
+  'usage',
+  'behavior',
+  'mcp',
+  'plugins',
+  'skills.catalog',
+  'routing',
+  'voice',
+  'tunnel',
+  'about',
+  'integrations',
+  'extensions',
+]);
+
+const withMultichamberLockdown = (page: SettingsPageMeta): SettingsPageMeta => {
+  if (!MULTICHAMBER_LOCKED_SETTINGS_PAGES.has(page.slug)) return page;
+  const baseAvailable = page.isAvailable;
+  return {
+    ...page,
+    isAvailable: (ctx) => !ctx.multichamberLockdown && (baseAvailable ? baseAvailable(ctx) : true),
+  };
+};
+
+export const SETTINGS_PAGE_METADATA: readonly SettingsPageMeta[] = BASE_SETTINGS_PAGE_METADATA.map(withMultichamberLockdown);
 
 const LEGACY_SIDEBAR_SECTION_TO_SETTINGS_SLUG: Record<SidebarSection, SettingsPageSlug> = {
   sessions: 'sessions',

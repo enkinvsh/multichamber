@@ -79,6 +79,7 @@ import {
   IPAD_WORKSPACE_SIDEBAR_MAX_WIDTH,
   useIpadSidebarResize,
 } from './ipadSidebarResize';
+import { useMultichamberLockdown } from '@/lib/multichamber/lockdown';
 
 const MOBILE_SETTINGS_PAGES = [
   'general',
@@ -266,6 +267,7 @@ const MobileShell: React.FC<{ onActiveConnectionDeleted: () => void }> = ({ onAc
   // Expose the shell's panel-opening actions to the deep-link layer so openchamber:// URLs
   // (and notification taps / widgets) can navigate to these surfaces. Session and
   // new-session intents resolve directly against the store, so they aren't wired here.
+  const multichamberLockdown = useMultichamberLockdown();
   const deepLinkHandlers = React.useMemo(
     () => ({
       openSessions: () => {
@@ -278,10 +280,12 @@ const MobileShell: React.FC<{ onActiveConnectionDeleted: () => void }> = ({ onAc
           return;
         }
         if (target === 'mcp') {
+          if (multichamberLockdown) return;
           setWorkspaceTab('mcp');
           setWorkspaceOpen(true);
           return;
         }
+        if (multichamberLockdown) return;
         openSurface(target);
       },
       openChanges: ({ path, staged }: { path?: string; staged?: boolean } = {}) => {
@@ -292,7 +296,7 @@ const MobileShell: React.FC<{ onActiveConnectionDeleted: () => void }> = ({ onAc
         openSettingsSurface(section ? 'page-content' : 'nav');
       },
     }),
-    [isTabletLayout, openChangesSurface, openFilesSurface, openSettingsSurface, openSurface, setSettingsPage],
+    [isTabletLayout, multichamberLockdown, openChangesSurface, openFilesSurface, openSettingsSurface, openSurface, setSettingsPage],
   );
   useDeepLinkHandlers(deepLinkHandlers);
 
@@ -346,6 +350,7 @@ const MobileShell: React.FC<{ onActiveConnectionDeleted: () => void }> = ({ onAc
   // the Capacitor shell — the native app updates through the store, and the
   // server it CONNECTS to is updated elsewhere.
   const showUpdateItem = !showCapacitorOnlyFeatures
+    && !multichamberLockdown
     && updateAvailable
     && (updateRuntimeType === 'desktop' || updateRuntimeType === 'web');
 

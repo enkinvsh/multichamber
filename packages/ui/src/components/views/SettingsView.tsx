@@ -24,6 +24,7 @@ import { CommandsSidebar } from '@/components/sections/commands/CommandsSidebar'
 import { CommandsPage } from '@/components/sections/commands/CommandsPage';
 import { McpSidebar } from '@/components/sections/mcp/McpSidebar';
 import { McpPage } from '@/components/sections/mcp/McpPage';
+import { useMultichamberLockdown } from '@/lib/multichamber/lockdown';
 import { PluginsSidebar, PluginsPage } from '@/components/sections/plugins';
 import { usePluginsStore } from '@/stores/usePluginsStore';
 import { SkillsSidebar } from '@/components/sections/skills/SkillsSidebar';
@@ -134,10 +135,10 @@ const NAV_GROUP_ORDER = ['general', 'projects', 'opencode', 'content'] as const;
 
 const ADD_PROVIDER_SETTINGS_ID = '__add_provider__';
 
-function buildRuntimeContext(isDesktop: boolean, isMobile: boolean, routingAvailable: boolean): SettingsRuntimeContext {
+function buildRuntimeContext(isDesktop: boolean, isMobile: boolean, routingAvailable: boolean, multichamberLockdown: boolean): SettingsRuntimeContext {
   const isVSCode = isVSCodeRuntime();
   const isWeb = !isDesktop && isWebRuntime();
-  return { isVSCode, isWeb, isDesktop, isMobile, routingAvailable };
+  return { isVSCode, isWeb, isDesktop, isMobile, routingAvailable, multichamberLockdown };
 }
 
 function isPageAvailable(page: SettingsPageMeta, ctx: SettingsRuntimeContext): boolean {
@@ -201,6 +202,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, forceMobile
   const setSettingsPage = useUIStore((state) => state.setSettingsPage);
   const openSettingsShortcutOverride = useUIStore((state) => state.shortcutOverrides.open_settings);
   const settingsSlug = resolveSettingsSlug(settingsPageRaw);
+  const multichamberLockdown = useMultichamberLockdown();
 
   const [mobileStage, setMobileStage] = React.useState<MobileStage>(initialMobileStage);
   // Seed with the mount-time slug when opening at the nav stage: the slug
@@ -214,9 +216,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, forceMobile
   // last visited page. Mobile keeps 'home' — its entry stage is the nav list.
   React.useEffect(() => {
     if (!isMobile && settingsSlug === 'home') {
-      setSettingsPage('general');
+      setSettingsPage(multichamberLockdown ? 'appearance' : 'general');
     }
-  }, [isMobile, setSettingsPage, settingsSlug]);
+  }, [isMobile, multichamberLockdown, setSettingsPage, settingsSlug]);
 
   const [settingsSearchQuery, setSettingsSearchQuery] = React.useState('');
   const [pendingSearchItemId, setPendingSearchItemId] = React.useState<string | null>(null);
@@ -250,7 +252,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, forceMobile
   // keep platform check available for future window chrome tweaks
 
   const routingAvailable = useUIStore((state) => state.routingFeatureAvailable);
-  const runtimeCtx = React.useMemo(() => buildRuntimeContext(isDesktopApp, isMobile, routingAvailable), [isDesktopApp, isMobile, routingAvailable]);
+  const runtimeCtx = React.useMemo(
+    () => buildRuntimeContext(isDesktopApp, isMobile, routingAvailable, multichamberLockdown),
+    [isDesktopApp, isMobile, routingAvailable, multichamberLockdown],
+  );
 
   const visiblePages = React.useMemo(() => {
     const allowedPages = visiblePageSlugs ? new Set<SettingsPageSlug>(visiblePageSlugs) : null;
@@ -268,6 +273,27 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, forceMobile
       .slice()
       .sort((a, b) => (rank.get(a.slug) ?? 999) - (rank.get(b.slug) ?? 999));
   }, [visiblePages]);
+
+  // MultiChamber lockdown hides pages; a deep link or a persisted slug for one
+  // falls back to the first visible page (mobile: the nav list).
+  React.useEffect(() => {
+    if (!runtimeCtx.multichamberLockdown || settingsSlug === 'home') {
+      return;
+    }
+    const meta = getSettingsPageMeta(settingsSlug);
+    if (meta && isPageAvailable(meta, runtimeCtx)) {
+      return;
+    }
+    if (isMobile) {
+      setSettingsPage('home');
+      setMobileStage('nav');
+      return;
+    }
+    const fallback = sortedFilteredPages[0]?.slug;
+    if (fallback) {
+      setSettingsPage(fallback);
+    }
+  }, [isMobile, runtimeCtx, setSettingsPage, settingsSlug, sortedFilteredPages]);
 
   const activeProjectId = useProjectsStore((state) => state.activeProjectId);
   const settingsDirectory = useSettingsDirectory();

@@ -15,6 +15,7 @@ const runtimeCtx = {
   isLinux: false,
   isWindowsArm64: false,
   routingAvailable: false,
+  multichamberLockdown: false,
 };
 
 describe('settings search', () => {
@@ -97,5 +98,23 @@ describe('settings search', () => {
     });
 
     expect(results.some((result) => result.id === 'integrations.guests')).toBe(false);
+  });
+
+  test('hides every locked page in MultiChamber lockdown and keeps the rest', () => {
+    const search = (query: string, multichamberLockdown: boolean) => buildSettingsSearchResults({
+      query,
+      runtimeCtx: { ...runtimeCtx, multichamberLockdown },
+      t,
+      getPageTitle: (page) => page,
+    });
+
+    for (const query of ['linear', 'gitlab', 'provider', 'mcp', 'plugin', 'tunnel', 'quota', 'agents.md', 'catalog', 'lan']) {
+      const lockedPages = search(query, true).map((result) => result.page);
+      for (const page of ['integrations', 'extensions', 'providers', 'mcp', 'plugins', 'tunnel', 'usage', 'behavior', 'skills.catalog', 'general']) {
+        expect(lockedPages).not.toContain(page);
+      }
+    }
+    expect(search('scrollbar', true).some((result) => result.id === 'appearance.scrollbars')).toBe(true);
+    expect(search('input history scope', true).some((result) => result.id === 'chat.input-history-scope')).toBe(true);
   });
 });

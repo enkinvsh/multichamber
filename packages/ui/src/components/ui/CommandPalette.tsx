@@ -40,6 +40,7 @@ import { createWorktreeSession } from '@/lib/worktreeSessionCreator';
 import { formatShortcutForDisplay, getEffectiveShortcutCombo, shortcutRegistry } from '@/lib/shortcuts';
 import { showOpenCodeStatus } from '@/lib/openCodeStatus';
 import { canUseElectronDesktopIPC, invokeDesktop, isDesktopShell, isVSCodeRuntime, isWebRuntime } from '@/lib/desktop';
+import { useMultichamberLockdown } from '@/lib/multichamber/lockdown';
 import { SETTINGS_PAGE_METADATA, type SettingsRuntimeContext } from '@/lib/settings/metadata';
 
 const EMPTY_PINNED_SESSION_IDS = new Set<string>();
@@ -403,10 +404,11 @@ export const CommandPalette: React.FC = () => {
   // Settings sub-pages (only show when there's a query)
   // ---------------------------------------------------------------------------
   const routingAvailable = useUIStore((state) => state.routingFeatureAvailable);
+  const multichamberLockdown = useMultichamberLockdown();
   const settingsRuntimeCtx = React.useMemo<SettingsRuntimeContext>(() => {
     const isDesktop = isDesktopShell();
-    return { isVSCode: isVSCodeRuntime(), isWeb: !isDesktop && isWebRuntime(), isDesktop, isMobile, routingAvailable };
-  }, [isMobile, routingAvailable]);
+    return { isVSCode: isVSCodeRuntime(), isWeb: !isDesktop && isWebRuntime(), isDesktop, isMobile, routingAvailable, multichamberLockdown };
+  }, [isMobile, routingAvailable, multichamberLockdown]);
 
   const settingsEntries = React.useMemo<CommandEntry[]>(() => {
     return SETTINGS_PAGE_METADATA

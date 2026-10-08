@@ -23,6 +23,7 @@ import { useDeviceInfo } from '@/lib/device';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import type { GitHubPullRequestContextResult, GitHubPullRequestSummary, GitHubPullRequestsListResult, GitHubRepoSelector } from '@/lib/api/types';
 import { useI18n } from '@/lib/i18n';
+import { useMultichamberLockdown } from '@/lib/multichamber/lockdown';
 
 const parsePrNumber = (value: string): number | null => {
   const trimmed = value.trim();
@@ -217,6 +218,7 @@ export function GitHubPrPickerDialog({
 
   const connected = githubAuthChecked ? result?.connected !== false : true;
 
+  const multichamberLockdown = useMultichamberLockdown();
   const openGitHubSettings = React.useCallback(() => {
     setSettingsPage('integrations');
     setSettingsDialogOpen(true);
@@ -339,9 +341,9 @@ export function GitHubPrPickerDialog({
             <div className="text-center text-muted-foreground py-8 space-y-3">
               <div>{t('session.githubPrPicker.empty.notConnected')}</div>
               <div className="flex justify-center">
-                <Button variant="outline" size="sm" onClick={openGitHubSettings}>
+                {multichamberLockdown ? null : (<Button variant="outline" size="sm" onClick={openGitHubSettings}>
                   {t('session.githubPrPicker.actions.openSettings')}
-                </Button>
+                </Button>)}
               </div>
             </div>
           ) : null}

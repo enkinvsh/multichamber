@@ -24,6 +24,7 @@ import {
 } from './sections';
 import { WorkStatusPresenceProvider } from './presence';
 import { Icon } from '@/components/icon/Icon';
+import { useMultichamberLockdown } from '@/lib/multichamber/lockdown';
 
 type Props = {
   /** Null on a new-session draft: repository readouts still apply. */
@@ -74,6 +75,7 @@ export const WorkStatusPanel: React.FC<Props> = ({ sessionId, directory, visible
   const storedOrder = useUIStore((state) => state.workStatusSectionOrder);
   const sectionOrder = React.useMemo(() => sanitizeWorkStatusSectionOrder(storedOrder), [storedOrder]);
   const [sectionsDialogOpen, setSectionsDialogOpen] = React.useState(false);
+  const multichamberLockdown = useMultichamberLockdown();
   // Starts optimistic: sections report after their first commit, and rendering
   // nothing on the way in would make the card flash out and back on arrival.
   const [renderedSections, setRenderedSections] = React.useState(1);
@@ -171,11 +173,11 @@ export const WorkStatusPanel: React.FC<Props> = ({ sessionId, directory, visible
   // Keep these elements owned by the panel so primary readout updates do not
   // rerender unrelated sections through the composition callback.
   const secondarySections = {
-    usage: <WorkStatusUsageSection />,
+    usage: multichamberLockdown ? null : <WorkStatusUsageSection />,
     telemetry: <WorkStatusTelemetrySection sessionId={sessionId} directory={directory} />,
     subagents: <WorkStatusSubagentsSection sessionId={sessionId} directory={directory} />,
     tasks: <WorkStatusTasksSection sessionId={sessionId} directory={directory} />,
-    mcp: <WorkStatusMcpSection directory={directory} />,
+    mcp: multichamberLockdown ? null : <WorkStatusMcpSection directory={directory} />,
     pinned: <WorkStatusPinnedSection sessionId={sessionId} directory={directory} />,
     contextSources: <WorkStatusContextSection sessionId={sessionId} directory={directory} />,
   } satisfies Record<Exclude<WorkStatusSectionId, 'session' | 'repository'>, React.ReactNode>;

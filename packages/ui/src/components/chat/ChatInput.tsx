@@ -76,6 +76,7 @@ import { useThemeSystem } from '@/contexts/useThemeSystem';
 import { GitHubIssuePickerDialog } from '@/components/session/GitHubIssuePickerDialog';
 import { GitHubPrPickerDialog } from '@/components/session/GitHubPrPickerDialog';
 import { LinearIssuePickerDialog } from '@/components/session/LinearIssuePickerDialog';
+import { useMultichamberLockdown } from '@/lib/multichamber/lockdown';
 import { Icon } from "@/components/icon/Icon";
 import { DraftPresetChips } from './DraftPresetChips';
 import { useChatSearchDirectory } from '@/hooks/useChatSearchDirectory';
@@ -3276,7 +3277,9 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
             handleGuestAttach(issue);
         }
     }, [consumePendingGuestIssue, handleGuestAttach, pendingGuestIssue]);
-    const showLinearPicker = Boolean(runtimeLinear) && !isVSCode;
+    const multichamberLockdown = useMultichamberLockdown();
+    const showLinearPicker = Boolean(runtimeLinear) && !isVSCode && !multichamberLockdown;
+    const showGitHubPickers = !multichamberLockdown;
     // The work-status panel carries the agent's todos, but only on the
     // desktop/web layout — VS Code and mobile have no panel, so the todos keep
     // their place above the composer there.
@@ -4017,6 +4020,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                         <Icon name="attachment-2" className="h-[18px] w-[18px] flex-shrink-0 text-muted-foreground" />
                         {t('chat.chatInput.actions.attachFiles')}
                     </button>
+                    {showGitHubPickers ? (<>
                     <button
                         type="button"
                         className="flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-2 py-3 text-left typography-ui-label hover:bg-[var(--interactive-hover)]"
@@ -4043,6 +4047,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                         <Icon name="git-pull-request" className="h-[18px] w-[18px] flex-shrink-0 text-muted-foreground" />
                         {t('chat.chatInput.actions.linkGithubPr')}
                     </button>
+                    </>) : null}
                     {showLinearPicker ? (
                         <button
                             type="button"

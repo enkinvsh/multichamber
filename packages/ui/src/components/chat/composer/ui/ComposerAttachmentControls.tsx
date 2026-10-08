@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import type { GuestAttachItem } from '@/hooks/useGuestSurfaces';
 import { useI18n } from '@/lib/i18n';
+import { useMultichamberLockdown } from '@/lib/multichamber/lockdown';
 import { cn } from '@/lib/utils';
 
 type ComposerAttachmentControlsProps = {
@@ -59,6 +60,7 @@ export const ComposerAttachmentControls = React.memo(function ComposerAttachment
         onOpenGuestAttach,
         filesOnly = false,
     } = props;
+    const multichamberLockdown = useMultichamberLockdown();
 
     return (
         <div className="flex items-center gap-x-1.5">
@@ -114,6 +116,7 @@ export const ComposerAttachmentControls = React.memo(function ComposerAttachment
                                 <Icon name="attachment-2"/>
                                 {t('chat.chatInput.actions.attachFiles')}
                             </DropdownMenuItem>
+                            {multichamberLockdown ? null : (<>
                             <DropdownMenuItem
                                 onSelect={() => {
                                     requestAnimationFrame(openIssuePicker);
@@ -130,6 +133,7 @@ export const ComposerAttachmentControls = React.memo(function ComposerAttachment
                                 <Icon name="git-pull-request"/>
                                 {t('chat.chatInput.actions.linkGithubPr')}
                             </DropdownMenuItem>
+                            </>)}
                             {showLinearPicker && openLinearPicker ? (
                                 <DropdownMenuItem
                                     onSelect={() => {

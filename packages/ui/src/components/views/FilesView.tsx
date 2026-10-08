@@ -1,5 +1,6 @@
 import React from 'react';
 import { runtimeFetch } from '@/lib/runtime-fetch';
+import { useMultichamberLockdown } from '@/lib/multichamber/lockdown';
 
 import { toast } from '@/components/ui';
 import { copyTextToClipboard } from '@/lib/clipboard';
@@ -1024,6 +1025,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full', visible = t
   const canDelete = Boolean(files.delete);
   const canReveal = Boolean(files.revealPath);
   const openInApps = useOpenInAppsStore((state) => state.availableApps);
+  const showOpenInApp = !useMultichamberLockdown();
   const openInCacheStale = useOpenInAppsStore((state) => state.isCacheStale);
   const initializeOpenInApps = useOpenInAppsStore((state) => state.initialize);
   const loadOpenInApps = useOpenInAppsStore((state) => state.loadInstalledApps);
@@ -3352,6 +3354,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full', visible = t
           </>
         )}
 
+        {showOpenInApp ? (
         <DropdownMenu onOpenChange={handleToolbarDropdownOpenChange}>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -3393,6 +3396,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full', visible = t
             ) : null}
           </DropdownMenuContent>
         </DropdownMenu>
+        ) : null}
 
         {!isSelectedImage && !isSelectedPdf && !isUnsupportedBinary && (
           <>

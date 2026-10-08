@@ -31,6 +31,7 @@ import { generateBranchSlug } from '@/lib/git/branchNameGenerator';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import type { GitHubIssue, GitHubIssueComment, GitHubIssuesListResult, GitHubIssueSummary, GitHubRepoSelector } from '@/lib/api/types';
 import { useI18n } from '@/lib/i18n';
+import { useMultichamberLockdown } from '@/lib/multichamber/lockdown';
 
 const parseIssueNumber = (value: string): number | null => {
   const trimmed = value.trim();
@@ -230,6 +231,7 @@ export function GitHubIssuePickerDialog({
   const connected = githubAuthChecked ? result?.connected !== false : true;
   const repoUrl = result?.repo?.url ?? null;
 
+  const multichamberLockdown = useMultichamberLockdown();
   const openGitHubSettings = React.useCallback(() => {
     setSettingsPage('integrations');
     setSettingsDialogOpen(true);
@@ -535,9 +537,9 @@ export function GitHubIssuePickerDialog({
             <div className="text-center text-muted-foreground py-8 space-y-3">
               <div>{t('session.githubIssuePicker.empty.notConnected')}</div>
               <div className="flex justify-center">
-                <Button variant="outline" size="sm" onClick={openGitHubSettings}>
+                {multichamberLockdown ? null : (<Button variant="outline" size="sm" onClick={openGitHubSettings}>
                   {t('session.githubIssuePicker.actions.openSettings')}
-                </Button>
+                </Button>)}
               </div>
             </div>
           ) : null}

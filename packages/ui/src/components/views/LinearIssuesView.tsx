@@ -33,6 +33,7 @@ import type {
   LinearTeamMapping,
   LinearWorkflowState,
 } from '@/lib/api/types';
+import { useMultichamberLockdown } from '@/lib/multichamber/lockdown';
 
 const LINEAR_MARKDOWN_CLASS = '[&_img]:max-w-full [&_img]:h-auto';
 const FILTER_TRIGGER_CLASS = 'flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-md px-2 typography-ui-label font-semibold text-foreground outline-none hover:bg-interactive-hover focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50';
@@ -300,6 +301,7 @@ export const LinearIssuesView: React.FC = () => {
     });
   }, [timeFormatPreference]);
 
+  const multichamberLockdown = useMultichamberLockdown();
   const openLinearSettings = React.useCallback(() => {
     setSettingsPage('integrations');
     setSettingsDialogOpen(true);
@@ -1111,9 +1113,9 @@ export const LinearIssuesView: React.FC = () => {
           <div className="text-center text-muted-foreground py-8 space-y-3">
             <div>{t('session.linearIssuePicker.empty.notConnected')}</div>
             <div className="flex justify-center">
-              <Button variant="outline" size="sm" onClick={openLinearSettings}>
+              {multichamberLockdown ? null : (<Button variant="outline" size="sm" onClick={openLinearSettings}>
                 {t('session.linearIssuePicker.actions.openSettings')}
-              </Button>
+              </Button>)}
             </div>
           </div>
         ) : null}

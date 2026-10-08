@@ -27,6 +27,7 @@ import type {
 } from '@/lib/api/types';
 import type { ProjectRef } from '@/lib/worktrees/worktreeManager';
 import { useI18n } from '@/lib/i18n';
+import { useMultichamberLockdown } from '@/lib/multichamber/lockdown';
 
 type GitHubTab = 'issues' | 'prs';
 
@@ -284,6 +285,7 @@ export function GitHubIntegrationDialog({
   // GitHub connection check
   const isGitHubConnected = githubAuthChecked && githubAuthStatus?.connected === true;
 
+  const multichamberLockdown = useMultichamberLockdown();
   const openGitHubSettings = () => {
     setSettingsPage('integrations');
     setSettingsDialogOpen(true);
@@ -344,7 +346,7 @@ export function GitHubIntegrationDialog({
               {t('session.githubIntegration.connect.description')}
             </p>
           </div>
-          <Button onClick={openGitHubSettings} size="sm">{t('session.githubIntegration.connect.action')}</Button>
+          {multichamberLockdown ? null : (<Button onClick={openGitHubSettings} size="sm">{t('session.githubIntegration.connect.action')}</Button>)}
         </div>
       ) : (
         <>

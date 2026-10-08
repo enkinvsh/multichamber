@@ -52,6 +52,7 @@ import {
   type StartSessionWorktreeMenuLoadArgs,
 } from './sidebar/sessionWorktreeMenu';
 import { resolveProjectRef } from '@/lib/worktreeSessionCreator';
+import { useMultichamberLockdown } from '@/lib/multichamber/lockdown';
 
 const PROJECT_ACTIVE_SESSION_STORAGE_KEY = 'oc.sessions.activeSessionByProject';
 const EMPTY_STRING_ARRAY: string[] = [];
@@ -401,7 +402,9 @@ const SessionSidebarComponent: React.FC<SessionSidebarProps> = ({
     setSettingsDialogOpen(true);
   }, [mobileVariant, setSessionSwitcherOpen, setSettingsDialogOpen]);
 
+  const multichamberLockdown = useMultichamberLockdown();
   const showSidebarUpdateButton =
+    !multichamberLockdown &&
     updateStore.available &&
     (updateStore.runtimeType === 'desktop' || updateStore.runtimeType === 'web');
 

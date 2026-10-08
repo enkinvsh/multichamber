@@ -39,6 +39,7 @@ import { registerTtsRoutes } from './lib/tts/routes.js';
 import { detectSayTtsCapability } from './lib/tts/capability-runtime.js';
 import { createTerminalRuntime } from './lib/terminal/runtime.js';
 import { createDictationRuntime } from './lib/dictation/runtime.js';
+import { installMultichamber } from './lib/multichamber/install.js';
 import {
   createGlobalUiEventBroadcaster,
   createGlobalMessageStreamHub,
@@ -1742,6 +1743,7 @@ async function main(options = {}) {
     },
     threshold: 1024,
   }));
+  installMultichamber(app, 'early');
   expressApp = app;
   server = http.createServer(app);
   let realtimeProxyRuntime = { stop: () => {} };
@@ -1869,6 +1871,7 @@ async function main(options = {}) {
     desktopUpdater,
   });
   uiAuthController = bootstrapResult.uiAuthController;
+  installMultichamber(app, 'parsed');
   realtimeProxyRuntime = attachRealtimeProxy({
     app,
     server,

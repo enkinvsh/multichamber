@@ -40,6 +40,7 @@ import type {
   GitRemote,
 } from '@/lib/api/types';
 import { useI18n } from '@/lib/i18n';
+import { useMultichamberLockdown } from '@/lib/multichamber/lockdown';
 
 type MergeMethod = 'merge' | 'squash' | 'rebase';
 type PrSegment = 'overview' | 'checks' | 'comments';
@@ -341,6 +342,7 @@ export const PullRequestSection: React.FC<{
   // in VS Code, so neither is its entry point.
   const showWalkthroughAction = !isMobile && screenWidth >= 768 && !isVSCodeRuntime();
 
+  const multichamberLockdown = useMultichamberLockdown();
   const openGitHubSettings = React.useCallback(() => {
     setSettingsPage('integrations');
     setSettingsDialogOpen(true);
@@ -1622,9 +1624,9 @@ export const PullRequestSection: React.FC<{
               <div className="typography-meta text-muted-foreground">
               {t('gitView.pr.githubNotConnected')}
             </div>
-                <Button variant="outline" size="sm" onClick={openGitHubSettings} className="w-fit">
+                {multichamberLockdown ? null : (<Button variant="outline" size="sm" onClick={openGitHubSettings} className="w-fit">
                   {t('gitView.pr.actions.openSettings')}
-                </Button>
+                </Button>)}
               </div>
             ) : null}
 

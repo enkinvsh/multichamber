@@ -19,6 +19,7 @@ import { MobileChangesSurface } from './MobileChangesSurface';
 import { MobileFilesSurface } from './MobileFilesSurface';
 import { useEdgeSwipe } from './useEdgeSwipe';
 import { isVimEditorEventTarget } from '@/lib/editorFocus';
+import { useMultichamberLockdown } from '@/lib/multichamber/lockdown';
 
 const DRAWER_ROOT_ID = 'mobile-surface-root';
 const ENTER_DELAY_MS = 16;
@@ -115,6 +116,7 @@ export const MobileWorkspaceDrawer: React.FC<{
   variant?: 'drawer' | 'panel';
 }> = ({ open, onClose, tab, onTabChange, pendingChangesDiff, onOpenPlan, onOpenMcpSettings, variant = 'drawer' }) => {
   const { t } = useI18n();
+  const multichamberLockdown = useMultichamberLockdown();
   const rootRef = React.useRef<HTMLElement | null>(null);
   const drawerRef = React.useRef<HTMLElement>(null);
   const [entered, setEntered] = React.useState(false);
@@ -199,7 +201,9 @@ export const MobileWorkspaceDrawer: React.FC<{
     { id: 'files', label: t('mobile.menu.files'), icon: <Icon name="file-text" className="h-3.5 w-3.5" /> },
     { id: 'terminal', label: t('mobile.menu.terminal'), icon: <Icon name="terminal" className="h-3.5 w-3.5" /> },
     { id: 'notes', label: t('contextRail.surface.notes'), icon: <Icon name="sticky-note" className="h-3.5 w-3.5" /> },
-    { id: 'mcp', label: t('mobile.menu.mcp'), icon: <McpIcon className="h-3.5 w-3.5" /> },
+    ...(multichamberLockdown
+      ? []
+      : [{ id: 'mcp', label: t('mobile.menu.mcp'), icon: <McpIcon className="h-3.5 w-3.5" /> }]),
   ];
 
   const body = (
@@ -274,7 +278,7 @@ export const MobileWorkspaceDrawer: React.FC<{
             </ErrorBoundary>
           </div>
         ) : null}
-        {visitedTabs.has('mcp') ? (
+        {visitedTabs.has('mcp') && !multichamberLockdown ? (
           <div className={cn('h-full', tab !== 'mcp' && 'hidden')}>
             <ErrorBoundary>
               <McpWorkspacePane onOpenMcpSettings={onOpenMcpSettings} />

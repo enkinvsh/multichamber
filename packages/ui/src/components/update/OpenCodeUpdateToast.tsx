@@ -14,6 +14,7 @@ import {
   shouldShowOpenCodeUpdateToast,
   type OpenCodeUpgradeStatusLike,
 } from './openCodeUpdateDedup';
+import { isMultichamberLockdown, useMultichamberLockdown } from '@/lib/multichamber/lockdown';
 
 const UPDATE_TOAST_ID = 'opencode-update-available';
 const UPGRADE_TOAST_ID = 'opencode-upgrade-progress';
@@ -23,7 +24,9 @@ const UPDATE_TOAST_DISMISSED_VERSION_KEY = 'opencode-update-toast-dismissed-vers
 
 export const OpenCodeUpdateToast: React.FC = () => {
   const { t } = useI18n();
-  const showOpenCodeUpdateNotifications = useUIStore((state) => state.showOpenCodeUpdateNotifications);
+  const showOpenCodeUpdatePreference = useUIStore((state) => state.showOpenCodeUpdateNotifications);
+  const multichamberLockdown = useMultichamberLockdown();
+  const showOpenCodeUpdateNotifications = showOpenCodeUpdatePreference && !multichamberLockdown;
   const seenVersionsRef = React.useRef(new Set<string>());
   const upgradingRef = React.useRef(false);
 
@@ -95,7 +98,7 @@ export const OpenCodeUpdateToast: React.FC = () => {
       // Upstream setting wins over our dedup logic: if user disabled
       // OpenCode update notifications, dismiss any active toast and bail
       // before consulting dedup state.
-      if (!useUIStore.getState().showOpenCodeUpdateNotifications) {
+      if (!useUIStore.getState().showOpenCodeUpdateNotifications || isMultichamberLockdown()) {
         toast.dismiss(UPDATE_TOAST_ID);
         return;
       }
@@ -162,7 +165,7 @@ export const OpenCodeUpdateToast: React.FC = () => {
     const unsubscribeRuntime = subscribeRuntimeEndpointChanged(({ runtimeKey }) => {
       seenVersionsRef.current.clear();
       toast.dismiss(UPDATE_TOAST_ID);
-      if (useUIStore.getState().showOpenCodeUpdateNotifications) {
+      if (useUIStore.getState().showOpenCodeUpdateNotifications && !isMultichamberLockdown()) {
         void checkForUpdate(0, runtimeKey);
       }
     });

@@ -23,6 +23,7 @@ import { DictationWaveform } from '@/components/dictation/DictationWaveform';
 import { isDictationCaptureSupported } from '@/lib/dictation/use-dictation-audio-source';
 import { isVSCodeRuntime } from '@/lib/desktop';
 import { useConfigStore } from '@/stores/useConfigStore';
+import { useMultichamberLockdown } from '@/lib/multichamber/lockdown';
 import { useUIStore } from '@/stores/useUIStore';
 import { formatShortcutForDisplay, getEffectiveShortcutCombo } from '@/lib/shortcuts';
 
@@ -122,7 +123,8 @@ export const ComposerDictation: React.FC<ComposerDictationProps> = ({
 }) => {
     const { t } = useI18n();
     const { currentTheme } = useThemeSystem();
-    const dictationEnabled = useConfigStore((state) => state.dictationEnabled);
+    const dictationPreference = useConfigStore((state) => state.dictationEnabled);
+    const dictationEnabled = dictationPreference && !useMultichamberLockdown();
     const shortcutOverrides = useUIStore((state) => state.shortcutOverrides);
     const dictationShortcut = formatShortcutForDisplay(getEffectiveShortcutCombo('toggle_dictation', shortcutOverrides));
     // The dictation server (WebSocket + STT worker) lives in the OpenChamber
@@ -199,6 +201,9 @@ export const ComposerDictation: React.FC<ComposerDictationProps> = ({
     // recording -> confirm and insert. Dispatched by useKeyboardShortcuts.
     React.useEffect(() => {
         const onToggle = () => {
+            if (!dictationEnabled) {
+                return;
+            }
             if (statusRef.current === 'idle') {
                 void startDictation();
             } else if (statusRef.current === 'recording') {
@@ -208,7 +213,7 @@ export const ComposerDictation: React.FC<ComposerDictationProps> = ({
         };
         window.addEventListener('openchamber:dictation-toggle', onToggle);
         return () => window.removeEventListener('openchamber:dictation-toggle', onToggle);
-    }, [startDictation, confirmDictation]);
+    }, [dictationEnabled, startDictation, confirmDictation]);
 
     // While recording: Enter confirms (insert), Escape cancels. Capture-phase
     // so the composer's own Enter-to-send never fires underneath the overlay.
