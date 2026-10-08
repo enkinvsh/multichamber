@@ -5,6 +5,7 @@ import type { Part } from '@opencode-ai/sdk/v2';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n';
 import { openExternalUrl } from '@/lib/url';
+import { openExternalLinkInLockdown } from '@/lib/multichamber/browser';
 import { useOptionalThemeSystem } from '@/contexts/useThemeSystem';
 import { getDefaultTheme } from '@/lib/theme/themes';
 import type { Theme } from '@/types/theme';
@@ -82,7 +83,7 @@ const useLinkInteractions = ({
     return attachAppLinkInteractions(container, {
       allowExternalHttp: enabled !== false,
       openAppLink: (href) => void openAppLinkWithConfirmation(href),
-      openExternalHttp: (href) => void openExternalUrl(href),
+      openExternalHttp: (href) => openExternalLinkInLockdown(href, (url) => void openExternalUrl(url)),
     });
   }, [containerRef, enabled]);
 };

@@ -9,6 +9,7 @@
 import { toast } from '@/components/ui/toast';
 import { BLANK_URL, isLoopbackUrl, normalizeBrowserUrl } from '@/lib/browser/url';
 import { formatMessage, useI18nStore } from '@/lib/i18n/store';
+import { isMultichamberLockdown } from './lockdown';
 
 type MultichamberPreviewTarget =
   | { readonly kind: 'new-tab'; readonly url: string }
@@ -40,4 +41,17 @@ export const openMultichamberPreview = (url: string): void => {
       return unreachable;
     }
   }
+};
+
+/**
+ * Plain link clicks in chat. In lockdown a loopback link points at the user's
+ * own machine, so it gets the same explanation as the preview button instead
+ * of a dead tab; every other link opens as usual.
+ */
+export const openExternalLinkInLockdown = (url: string, openExternal: (url: string) => void): void => {
+  if (isMultichamberLockdown() && resolveMultichamberPreviewTarget(url).kind === 'workspace-loopback') {
+    openMultichamberPreview(url);
+    return;
+  }
+  openExternal(url);
 };
