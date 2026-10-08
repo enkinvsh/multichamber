@@ -1,0 +1,39 @@
+name: multichamber upstream sync
+
+on:
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Upstream tag to merge (default - newest release tag)
+        required: false
+
+concurrency:
+  group: multichamber-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      # A deploy key, not GITHUB_TOKEN: its push may carry upstream commits that touch
+      # .github/workflows, and it starts the image workflow.
+      - uses: actions/checkout@v4
+        with:
+          ssh-key: ${{ secrets.SYNC_DEPLOY_KEY }}
+          fetch-depth: 0
+      - name: Merge upstream release
+        id: sync
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          git config user.name 'multichamber-sync'
+          git config user.email 'multichamber-sync@users.noreply.github.com'
+          ./multichamber/sync-upstream.sh ${TAG:+"$TAG"}
+      - name: Push
+        if: steps.sync.outputs.merged != ''
+        run: git push origin HEAD:main

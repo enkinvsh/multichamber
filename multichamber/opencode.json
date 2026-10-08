@@ -1,0 +1,103 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "ultra/claude-opus-4-6-thinking",
+  "small_model": "gemini/gemini-3.7-flash-high",
+  "autoupdate": false,
+  "share": "disabled",
+  "enabled_providers": [
+    "ultra",
+    "gemini"
+  ],
+  "provider": {
+    "ultra": {
+      "npm": "@ai-sdk/anthropic",
+      "name": "Claude",
+      "options": {
+        "baseURL": "{env:MULTICHAMBER_LLM_BASE_URL}",
+        "apiKey": "{env:MULTICHAMBER_LLM_KEY}"
+      },
+      "models": {
+        "claude-opus-4-6-thinking": {
+          "name": "Claude Opus 4.6",
+          "reasoning": true,
+          "attachment": true,
+          "tool_call": true,
+          "limit": {
+            "context": 200000,
+            "output": 64000
+          }
+        },
+        "claude-sonnet-4-6": {
+          "name": "Claude Sonnet 4.6",
+          "reasoning": false,
+          "attachment": true,
+          "tool_call": true,
+          "limit": {
+            "context": 200000,
+            "output": 64000
+          }
+        },
+        "claude-opus-5-5-high": {
+          "name": "Claude Opus 5.5",
+          "reasoning": true,
+          "attachment": true,
+          "tool_call": true,
+          "limit": {
+            "context": 200000,
+            "output": 64000
+          }
+        },
+        "claude-sonnet-5-5-high": {
+          "name": "Claude Sonnet 5.5",
+          "reasoning": true,
+          "attachment": true,
+          "tool_call": true,
+          "limit": {
+            "context": 200000,
+            "output": 64000
+          }
+        }
+      }
+    },
+    "gemini": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Gemini",
+      "options": {
+        "baseURL": "{env:MULTICHAMBER_LLM_BASE_URL}",
+        "apiKey": "{env:MULTICHAMBER_LLM_KEY}"
+      },
+      "models": {
+        "gemini-3.8-flash-high": {
+          "name": "Gemini 3.8 Flash",
+          "reasoning": true,
+          "attachment": true,
+          "tool_call": true,
+          "limit": {
+            "context": 1000000,
+            "output": 65536
+          }
+        },
+        "gemini-3.7-flash-high": {
+          "name": "Gemini 3.7 Flash",
+          "reasoning": true,
+          "attachment": true,
+          "tool_call": true,
+          "limit": {
+            "context": 1000000,
+            "output": 65536
+          }
+        },
+        "gemini-3.1-pro-low": {
+          "name": "Gemini 3.1 Pro",
+          "reasoning": true,
+          "attachment": true,
+          "tool_call": true,
+          "limit": {
+            "context": 1000000,
+            "output": 65536
+          }
+        }
+      }
+    }
+  }
+}

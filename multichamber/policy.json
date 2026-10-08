@@ -1,0 +1,8 @@
+{
+  "enterpriseMode": true,
+  "organization": "MultiChamber",
+  "allowNetworkAccess": true,
+  "allowedExtensions": [],
+  "allowLocalExtensions": false,
+  "opencodeBinary": "/usr/local/bin/opencode"
+}

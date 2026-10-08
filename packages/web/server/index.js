@@ -147,6 +147,7 @@ import { createPluginNotificationEmitter } from './lib/notifications/emit-route.
 import { OpenChamberControlError } from './lib/openchamber-control/error.js';
 import { createFileOpenRequester } from './lib/openchamber-control/file-open.js';
 import { applyConnectAttemptTimeout } from './lib/network-defaults.js';
+import { createFsRootGuard } from './lib/multichamber/fs-root-guard.js';
 
 // Background CLI launches enter here in a fresh process, without CLI defaults.
 applyConnectAttemptTimeout();
@@ -2189,6 +2190,8 @@ async function main(options = {}) {
   // on and off live: with no host it passes every request on and no upgrade is taken.
   // An archived chat of a deleted space is read and deleted, never run or changed.
   app.use(spaceArchive.guard);
+  const fsRootGuard = createFsRootGuard({ root: process.env.MULTICHAMBER_FS_ROOT, homedir: os.homedir() });
+  if (fsRootGuard) app.use(fsRootGuard);
   app.use((req, res, next) => (spacesHost ? spacesHost.middleware(req, res, next) : next()));
   server.on('upgrade', (...args) => { spacesHost?.upgradeHandler(...args); });
   const startSpacesHost = (host) => {
