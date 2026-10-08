@@ -40,6 +40,7 @@ import { useSelectionStore } from '@/sync/selection-store';
 import { useSession, useSessionMessages, useSessionRenderable } from '@/sync/sync-context';
 import { useSync } from '@/sync/use-sync';
 import { useUIStore } from '@/stores/useUIStore';
+import { useMultichamberLockdown } from '@/lib/multichamber/lockdown';
 import { useModelLists } from '@/hooks/useModelLists';
 import { useIsTextTruncated } from '@/hooks/useIsTextTruncated';
 import { formatEffortLabel, getCycledPrimaryAgentName, isPrimaryMode, type MobileControlsPanel } from './mobileControlsUtils';
@@ -500,6 +501,7 @@ export const ModelControls: React.FC<ModelControlsProps> = ({
     // Use global state for model selector (allows Ctrl+M shortcut)
     const agentMenuOpen = isModelSelectorOpen;
     const setAgentMenuOpen = selection ? setLocalModelSelectorOpen : setModelSelectorOpen;
+    const multichamberLockdown = useMultichamberLockdown();
     const openAddProviderSettings = React.useCallback(() => {
         requestProviderConnect(true);
         setSettingsPage('providers');
@@ -2604,7 +2606,7 @@ export const ModelControls: React.FC<ModelControlsProps> = ({
                             collisionAvoidance={{ side: 'none', align: 'shift' }}
                             onKeyDownCapture={handleModelShortcutKeyDownCapture}
                         >
-                            {!selection && <div className="p-1 border-b border-border/40">
+                            {!selection && !multichamberLockdown && <div className="p-1 border-b border-border/40">
                                 <button
                                     type="button"
                                     onClick={openAddProviderSettings}

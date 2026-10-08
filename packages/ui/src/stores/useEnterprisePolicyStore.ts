@@ -20,6 +20,8 @@ const enterprisePolicySchema = z.object({
   networkAccessBlocked: z.boolean().default(false),
   // OpenCode CLI path the administrator pinned; servers from before the pin have none.
   opencodeBinary: z.string().min(1).nullable().default(null),
+  // MultiChamber lockdown (packages/ui/src/lib/multichamber/lockdown.ts); upstream servers never send it.
+  multichamberLockdown: z.boolean().default(false),
 });
 
 type EnterprisePolicy = z.infer<typeof enterprisePolicySchema>;
@@ -31,6 +33,7 @@ const NO_POLICY: EnterprisePolicy = {
   policyError: null,
   networkAccessBlocked: false,
   opencodeBinary: null,
+  multichamberLockdown: false,
 };
 
 /**

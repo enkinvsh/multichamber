@@ -1,4 +1,5 @@
 import { publicEnterprisePolicy } from '../enterprise-mode.js';
+import { isLockdownEnabled } from '../multichamber/lockdown-guard.js';
 
 const SYSTEMD_SERVICE_UNIT_PATTERN = /^[A-Za-z0-9:_.@-]+\.service$/;
 
@@ -114,7 +115,7 @@ export const registerOpenChamberRoutes = (app, dependencies) => {
   // Whether an administrator turned on enterprise mode, and by which source.
   // Pinned endpoints and keys never leave the server.
   app.get('/api/openchamber/enterprise-policy', (_req, res) => {
-    res.json(publicEnterprisePolicy());
+    res.json({ ...publicEnterprisePolicy(), multichamberLockdown: isLockdownEnabled() });
   });
 
   app.get('/api/openchamber/update-check', async (req, res) => {

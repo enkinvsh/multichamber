@@ -275,7 +275,7 @@ const ATTEMPT_ID = /^[A-Za-z0-9_-]+$/;
  * be decoded or is a dot segment: such a path is refused. Recheck this list
  * when OpenCode changes its router.
  */
-const routeSegments = (requestPath) => {
+export const routeSegments = (requestPath) => {
   const pathOnly = String(requestPath).split(/[?#;]/, 1)[0];
   const segments = [];
   for (const raw of pathOnly.split(/[\\/]/)) {

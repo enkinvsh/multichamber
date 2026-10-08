@@ -27,6 +27,7 @@ import { useI18n } from '@/lib/i18n';
 import { isIMECompositionEvent } from '@/lib/ime';
 import { cn } from '@/lib/utils';
 import { useUIStore } from '@/stores/useUIStore';
+import { useMultichamberLockdown } from '@/lib/multichamber/lockdown';
 
 import { ReferencePickerRow } from './ReferencePickerRow';
 import { ReferencePreview, type ReferencePreviewPurpose } from './ReferencePreview';
@@ -94,6 +95,7 @@ function ReferencePickerSurface({
     isMobile,
 }: ReferencePickerDialogProps & { isMobile: boolean }) {
     const { t } = useI18n();
+    const multichamberLockdown = useMultichamberLockdown();
     const [githubKind, setGitHubKind] = React.useState<GitHubReferenceKind>(initialGitHubKind ?? lastGitHubKind);
     const [githubFilter, setGitHubFilter] = React.useState<GitHubReferenceFilter>(lastGitHubFilter.get(initialGitHubKind ?? lastGitHubKind) ?? 'open');
     const [linearFilter, setLinearFilter] = React.useState<LinearReferenceFilter>(lastLinearFilter);
@@ -387,7 +389,7 @@ function ReferencePickerSurface({
                     <span>{t(source === 'linear'
                         ? 'references.picker.empty.linear.notConnected'
                         : isGitLab ? 'references.picker.empty.gitlab.notConnected' : 'references.picker.empty.github.notConnected')}</span>
-                    <Button size="sm" variant="outline" onClick={openSettings}>{t('references.picker.actions.openSettings')}</Button>
+                    {multichamberLockdown ? null : <Button size="sm" variant="outline" onClick={openSettings}>{t('references.picker.actions.openSettings')}</Button>}
                 </>,
             );
         }

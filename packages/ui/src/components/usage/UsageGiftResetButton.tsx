@@ -5,6 +5,7 @@ import {
   type QuotaGiftResetType,
 } from "@/lib/quota/fetchQuota";
 import { useQuotaStore } from "@/stores/useQuotaStore";
+import { useMultichamberLockdown } from "@/lib/multichamber/lockdown";
 import { useUIStore } from "@/stores/useUIStore";
 import { useI18n } from "@/lib/i18n";
 import { formatDateTimeForPreference } from "@/lib/timeFormat";
@@ -48,10 +49,11 @@ export const UsageGiftResetButton: React.FC<{
   );
   const fetchProviderQuota = useQuotaStore((state) => state.fetchProviderQuota);
   const [pending, setPending] = React.useState(false);
+  const multichamberLockdown = useMultichamberLockdown();
 
   const giftReset = window.giftReset ?? null;
   const resetType = giftResetTypeForWindow(window.windowSeconds);
-  if (!giftReset || !resetType) return null;
+  if (!giftReset || !resetType || multichamberLockdown) return null;
 
   const urgent = giftReset.expireAt - Date.now() < GIFT_RESET_URGENT_MS;
   const remaining =

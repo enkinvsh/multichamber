@@ -9,6 +9,7 @@ import { loadDesktopSettings, updateDesktopSettings } from '@/lib/persistence';
 import { fetchQuota } from '@/lib/quota/fetchQuota';
 import { getRuntimeKey, isTransientRuntimeKey } from '@/lib/runtime-switch';
 import { useConfigStore } from '@/stores/useConfigStore';
+import { isMultichamberLockdown } from '@/lib/multichamber/lockdown';
 
 const QUOTA_REFRESH_INTERVAL_MS = 3 * 60 * 1000;
 // Quotas and their display settings are read from the connected OpenChamber
@@ -146,6 +147,7 @@ export const useQuotaStore = create<QuotaStore>()(
       },
 
       fetchProviderQuota: async (providerId) => {
+        if (isMultichamberLockdown()) return false;
         const existing = quotaRequests.get(providerId);
         if (existing) return existing.promise;
         const generation = quotaGeneration;

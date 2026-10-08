@@ -6,6 +6,7 @@ import {
 } from '@/lib/shortcuts';
 import { useUIStore } from '@/stores/useUIStore';
 import { useEnterpriseMode, useJevBlockedByEnterprise } from '@/stores/useEnterprisePolicyStore';
+import { isSettingsPageLocked, lockdownSettingsFallback, useMultichamberLockdown } from '@/lib/multichamber/lockdown';
 import { useSettingsDirectory } from '@/hooks/useSettingsDirectory';
 import { useProjectsStore } from '@/stores/useProjectsStore';
 import { useAgentsStore } from '@/stores/useAgentsStore';
@@ -137,13 +138,16 @@ const pageOrder: SettingsPageSlug[] = [
 
 const NAV_GROUP_ORDER = ['general', 'projects', 'opencode', 'content'] as const;
 
-function buildRuntimeContext(isDesktop: boolean, isMobile: boolean, routingAvailable: boolean, enterpriseMode: boolean, jevBlockedByEnterprise: boolean): SettingsRuntimeContext {
+function buildRuntimeContext(isDesktop: boolean, isMobile: boolean, routingAvailable: boolean, enterpriseMode: boolean, jevBlockedByEnterprise: boolean, multichamberLockdown: boolean): SettingsRuntimeContext {
   const isVSCode = isVSCodeRuntime();
   const isWeb = !isDesktop && isWebRuntime();
-  return { isVSCode, isWeb, isDesktop, isMobile, routingAvailable, enterpriseMode, jevBlockedByEnterprise };
+  return { isVSCode, isWeb, isDesktop, isMobile, routingAvailable, enterpriseMode, jevBlockedByEnterprise, multichamberLockdown };
 }
 
 function isPageAvailable(page: SettingsPageMeta, ctx: SettingsRuntimeContext): boolean {
+  if (isSettingsPageLocked(page.slug, ctx)) {
+    return false;
+  }
   if (!page.isAvailable) {
     return true;
   }
@@ -233,10 +237,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, forceMobile
   const routingAvailable = useUIStore((state) => state.routingFeatureAvailable);
   const enterpriseMode = useEnterpriseMode();
   const jevBlockedByEnterprise = useJevBlockedByEnterprise();
+  const multichamberLockdown = useMultichamberLockdown();
   const runtimeCtx = React.useMemo(
-    () => buildRuntimeContext(isDesktopApp, isMobile, routingAvailable, enterpriseMode, jevBlockedByEnterprise),
-    [isDesktopApp, isMobile, routingAvailable, enterpriseMode, jevBlockedByEnterprise],
+    () => buildRuntimeContext(isDesktopApp, isMobile, routingAvailable, enterpriseMode, jevBlockedByEnterprise, multichamberLockdown),
+    [isDesktopApp, isMobile, routingAvailable, enterpriseMode, jevBlockedByEnterprise, multichamberLockdown],
   );
+  const lockdownFallbackPage = lockdownSettingsFallback(settingsSlug, runtimeCtx, isMobile);
+  React.useEffect(() => {
+    if (lockdownFallbackPage) setSettingsPage(lockdownFallbackPage);
+  }, [lockdownFallbackPage, setSettingsPage]);
 
   const visiblePages = React.useMemo(() => {
     const allowedPages = visiblePageSlugs ? new Set<SettingsPageSlug>(visiblePageSlugs) : null;

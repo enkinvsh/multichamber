@@ -74,7 +74,8 @@ ENV NODE_ENV=production \
     LANG=C.UTF-8 \
     HOME=/home/dev \
     OPENCODE_CONFIG=/etc/multichamber/opencode.json \
-    OPENCHAMBER_HOST=0.0.0.0
+    OPENCHAMBER_HOST=0.0.0.0 \
+    MULTICHAMBER_LOCKDOWN=1
 
 USER dev
 EXPOSE 3000

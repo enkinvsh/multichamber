@@ -7,6 +7,7 @@ import { ProviderLogo } from '@/components/ui/ProviderLogo';
 import { preloadProviderLogos } from '@/hooks/useProviderLogo';
 import { formatQuotaResetLabel, formatQuotaValueLabel } from '@/lib/quota';
 import { useQuotaAutoRefresh, useQuotaStore } from '@/stores/useQuotaStore';
+import { useMultichamberLockdown } from '@/lib/multichamber/lockdown';
 import { useUIStore } from '@/stores/useUIStore';
 import { useUsageProviderGroups } from '@/components/usage/usageGroups';
 import { UsageGiftResetButton } from '@/components/usage/UsageGiftResetButton';
@@ -69,9 +70,10 @@ export const WorkStatusUsageSection: React.FC = () => {
     preloadProviderLogos(groups.map((group) => group.providerId));
   }, [groups]);
 
-  useReportWorkStatusPresence('usage', groups.length > 0);
+  const multichamberLockdown = useMultichamberLockdown();
+  useReportWorkStatusPresence('usage', groups.length > 0 && !multichamberLockdown);
 
-  if (groups.length === 0) return null;
+  if (groups.length === 0 || multichamberLockdown) return null;
 
   const modeLabel = displayMode === 'remaining'
     ? t('header.services.remaining')

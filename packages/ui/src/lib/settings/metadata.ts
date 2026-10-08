@@ -50,6 +50,8 @@ export interface SettingsRuntimeContext {
   enterpriseMode: boolean;
   /** Enterprise mode keeps Jev off (no administrator's endpoint), so pages that only configure Jev are hidden. */
   jevBlockedByEnterprise: boolean;
+  /** MultiChamber lockdown hides LOCKED_SETTINGS_PAGES (`@/lib/multichamber/lockdown`). */
+  multichamberLockdown?: boolean;
 }
 
 export interface SettingsPageMeta {

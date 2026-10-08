@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils';
 import { findLatestContextFill } from '@/stores/utils/tokenUtils';
 import { useConfigStore } from '@/stores/useConfigStore';
 import { useQuotaAutoRefresh, useQuotaStore } from '@/stores/useQuotaStore';
+import { useMultichamberLockdown } from '@/lib/multichamber/lockdown';
 import { useUIStore, type TimeFormatPreference } from '@/stores/useUIStore';
 import { useSelectionStore } from '@/sync/selection-store';
 import { useSessionMessages } from '@/sync/sync-context';
@@ -283,6 +284,8 @@ const MobileUsageLimits: React.FC<{
 }> = ({ groups, displayMode, isLoading, timeFormatPreference }) => {
   const { t } = useI18n();
   const modeLabel = displayMode === 'remaining' ? t('header.services.remaining') : t('header.services.used');
+  const multichamberLockdown = useMultichamberLockdown();
+  if (multichamberLockdown) return null;
 
   // First open often races the quota fetch (~2s) — show an explicit loading
   // row instead of collapsing to an empty overlay.

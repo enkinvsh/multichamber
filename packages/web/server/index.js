@@ -152,6 +152,7 @@ import { createSessionLinker } from './lib/openchamber-sessions/session-link.js'
 import { createFileOpenRequester } from './lib/openchamber-control/file-open.js';
 import { applyConnectAttemptTimeout } from './lib/network-defaults.js';
 import { createFsRootGuard } from './lib/multichamber/fs-root-guard.js';
+import { createLockdownGuard, createLockdownSettingsFilter, isLockdownEnabled } from './lib/multichamber/lockdown-guard.js';
 
 // Background CLI launches enter here in a fresh process, without CLI defaults.
 applyConnectAttemptTimeout();
@@ -2124,6 +2125,9 @@ async function main(options = {}) {
     },
     threshold: 1024,
   }));
+  // Before setupBaseRoutes: system, passkey-register, client-auth and update-install routes are registered there.
+  const lockdownGuard = createLockdownGuard({ enabled: isLockdownEnabled() });
+  if (lockdownGuard) app.use(lockdownGuard);
   expressApp = app;
   server = http.createServer(app);
   gracefulShutdownRuntime.trackServerConnections(server);
@@ -2261,6 +2265,9 @@ async function main(options = {}) {
   app.use(spaceArchive.guard);
   const fsRootGuard = createFsRootGuard({ root: process.env.MULTICHAMBER_FS_ROOT, homedir: os.homedir() });
   if (fsRootGuard) app.use(fsRootGuard);
+  // Bodies are parsed by now (setupBaseRoutes); PUT /api/config/settings is registered later.
+  const lockdownSettingsFilter = createLockdownSettingsFilter({ enabled: isLockdownEnabled() });
+  if (lockdownSettingsFilter) app.use(lockdownSettingsFilter);
   app.use((req, res, next) => (spacesHost ? spacesHost.middleware(req, res, next) : next()));
   server.on('upgrade', (...args) => { spacesHost?.upgradeHandler(...args); });
   const startSpacesHost = (host) => {

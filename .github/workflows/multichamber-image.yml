@@ -62,6 +62,14 @@ jobs:
           echo "home=$inside etc=$outside"
           test "$inside" = 200
           test "$outside" = 403
+          provider=$(curl -s -o /dev/null -w '%{http_code}' -X PUT -H 'content-type: application/json' -d '{}' http://127.0.0.1:3000/api/provider)
+          quota=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/api/quota/providers)
+          credential=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' -d '{}' http://127.0.0.1:3000/api/credential)
+          echo "provider=$provider quota=$quota credential=$credential"
+          test "$provider" = 403
+          test "$quota" = 403
+          test "$credential" = 403
+          curl -fsS http://127.0.0.1:3000/api/openchamber/enterprise-policy | grep -q '"multichamberLockdown":true'
           docker exec mc opencode --version
       - name: Container log
         if: always()

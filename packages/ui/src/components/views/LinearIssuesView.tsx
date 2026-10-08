@@ -21,6 +21,7 @@ import { useRuntimeAPIs } from '@/hooks/useRuntimeAPIs';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useLinearAuthStore } from '@/stores/useLinearAuthStore';
 import { useUIStore, LINEAR_ISSUE_LIST_ALL_TEAMS } from '@/stores/useUIStore';
+import { useMultichamberLockdown } from '@/lib/multichamber/lockdown';
 import { useI18n } from '@/lib/i18n';
 import { formatDateTimeForPreference } from '@/lib/timeFormat';
 import { openExternalUrl } from '@/lib/url';
@@ -315,6 +316,7 @@ export const LinearIssuesView: React.FC = () => {
     });
   }, [timeFormatPreference]);
 
+  const multichamberLockdown = useMultichamberLockdown();
   const openLinearSettings = React.useCallback(() => {
     setSettingsPage('integrations');
     setSettingsDialogOpen(true);
@@ -1143,11 +1145,13 @@ export const LinearIssuesView: React.FC = () => {
         {showDisconnected ? (
           <div className="text-center text-muted-foreground py-8 space-y-3">
             <div>{t('session.linearIssuePicker.empty.notConnected')}</div>
-            <div className="flex justify-center">
-              <Button variant="outline" size="sm" onClick={openLinearSettings}>
-                {t('session.linearIssuePicker.actions.openSettings')}
-              </Button>
-            </div>
+            {multichamberLockdown ? null : (
+              <div className="flex justify-center">
+                <Button variant="outline" size="sm" onClick={openLinearSettings}>
+                  {t('session.linearIssuePicker.actions.openSettings')}
+                </Button>
+              </div>
+            )}
           </div>
         ) : null}
 

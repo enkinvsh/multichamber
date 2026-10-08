@@ -22,6 +22,7 @@ import { SimpleMarkdownRenderer } from '@/components/chat/MarkdownRenderer';
 import { Icon } from "@/components/icon/Icon";
 import { useUIStore } from '@/stores/useUIStore';
 import { useOpenSourceControlSettings } from '@/hooks/useOpenSourceControlSettings';
+import { useMultichamberLockdown } from '@/lib/multichamber/lockdown';
 import { useWalkthroughStore } from '@/stores/useWalkthroughStore';
 import { WALKTHROUGH_ACTION_CLASS } from '@/components/views/walkthrough/walkthroughAction';
 import { GitHubAccountControl } from '@/components/github/GitHubAccountControl';
@@ -320,6 +321,7 @@ export const PullRequestSection: React.FC<{
   );
   const timeFormatPreference = useUIStore((state) => state.timeFormatPreference);
   const openSourceControlSettings = useOpenSourceControlSettings();
+  const multichamberLockdown = useMultichamberLockdown();
   const { sourceControl } = useRuntimeAPIs();
   const sourceControlAuthEntries = useSourceControlAuthStore((state) => state.entries);
   const currentSessionId = useSessionUIStore((state) => state.currentSessionId);
@@ -1754,9 +1756,11 @@ export const PullRequestSection: React.FC<{
               <div className="typography-meta text-muted-foreground">
               {t('gitView.pr.providerNotConnected', { provider: providerName })}
             </div>
-                <Button variant="outline" size="sm" onClick={openSourceControlSettings} className="w-fit">
-                  {t('gitView.pr.actions.openSettings')}
-                </Button>
+                {multichamberLockdown ? null : (
+                  <Button variant="outline" size="sm" onClick={openSourceControlSettings} className="w-fit">
+                    {t('gitView.pr.actions.openSettings')}
+                  </Button>
+                )}
               </div>
             ) : null}
 

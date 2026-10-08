@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/dialog';
 import { useUIStore } from '@/stores/useUIStore';
 import { useEnterpriseMode, useJevBlockedByEnterprise } from '@/stores/useEnterprisePolicyStore';
+import { isSettingsPageLocked, useMultichamberLockdown } from '@/lib/multichamber/lockdown';
 import { useSessionUIStore } from '@/sync/session-ui-store';
 import { useGlobalSessionsStore, resolveGlobalSessionDirectory } from '@/stores/useGlobalSessionsStore';
 import { isBtwSession } from '@/lib/sessionBtwMetadata';
@@ -486,14 +487,16 @@ export const CommandPalette: React.FC = () => {
   const routingAvailable = useUIStore((state) => state.routingFeatureAvailable);
   const enterpriseMode = useEnterpriseMode();
   const jevBlockedByEnterprise = useJevBlockedByEnterprise();
+  const multichamberLockdown = useMultichamberLockdown();
   const settingsRuntimeCtx = React.useMemo<SettingsRuntimeContext>(() => {
     const isDesktop = isDesktopShell();
-    return { isVSCode: isVSCodeRuntime(), isWeb: !isDesktop && isWebRuntime(), isDesktop, isMobile, routingAvailable, enterpriseMode, jevBlockedByEnterprise };
-  }, [isMobile, routingAvailable, enterpriseMode, jevBlockedByEnterprise]);
+    return { isVSCode: isVSCodeRuntime(), isWeb: !isDesktop && isWebRuntime(), isDesktop, isMobile, routingAvailable, enterpriseMode, jevBlockedByEnterprise, multichamberLockdown };
+  }, [isMobile, routingAvailable, enterpriseMode, jevBlockedByEnterprise, multichamberLockdown]);
 
   const settingsEntries = React.useMemo<CommandEntry[]>(() => {
     return SETTINGS_PAGE_METADATA
       .filter((p) => p.slug !== 'home')
+      .filter((p) => !isSettingsPageLocked(p.slug, settingsRuntimeCtx))
       .filter((p) => (p.isAvailable ? p.isAvailable(settingsRuntimeCtx) : true))
       .map((page) => {
         const iconName = getSettingsNavIcon(page.slug) ?? 'settings-3';

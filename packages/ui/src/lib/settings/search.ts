@@ -3,6 +3,7 @@ import { ISOLATED_SPACES_RELEASED } from '@/lib/spaces/release';
 import { useUIStore } from '@/stores/useUIStore';
 import type { SettingsPageSlug, SettingsRuntimeContext } from './metadata';
 import { getSettingsPageMeta } from './metadata';
+import { isSettingsPageLocked } from '@/lib/multichamber/lockdown';
 
 interface SettingsSearchItem {
   id: string;
@@ -1423,7 +1424,7 @@ export function buildSettingsSearchResults({
     }
 
     const pageMeta = getSettingsPageMeta(item.page);
-    if (!pageMeta || (pageMeta.isAvailable && !pageMeta.isAvailable(runtimeCtx)) || (item.isAvailable && !item.isAvailable(runtimeCtx))) {
+    if (!pageMeta || isSettingsPageLocked(item.page, runtimeCtx) || (pageMeta.isAvailable && !pageMeta.isAvailable(runtimeCtx)) || (item.isAvailable && !item.isAvailable(runtimeCtx))) {
       return [];
     }
 
