@@ -14,7 +14,9 @@ fi
 MULTICHAMBER_FS_ROOT="${MULTICHAMBER_FS_ROOT:-$HOME}"
 export MULTICHAMBER_FS_ROOT
 
-mkdir -p "$HOME/projects" "$HOME/.config" "$HOME/.local/share" "$HOME/.cache"
+# The chats root must exist before the UI scopes OpenCode to it, or every
+# directory-scoped OpenCode call for "chats" fails with 500.
+mkdir -p "$HOME/projects" "$HOME/.config/openchamber/chats" "$HOME/.local/share" "$HOME/.cache"
 cd "$HOME/projects"
 
 exec bun /opt/multichamber/packages/web/bin/cli.js serve --foreground --port "${MULTICHAMBER_PORT:-3000}"
