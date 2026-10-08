@@ -16,8 +16,8 @@ app goes to the OpenChamber and OpenCode authors; the upstream README is [here](
   (`packages/web/server/lib/multichamber/`). This is a usability boundary; isolation comes from the
   container (non-root user, read-only root filesystem).
 - **Runs on any x86-64 CPU**: baseline builds of Bun and OpenCode, so CPUs without AVX2 work.
-- One OpenCode config for every user (`multichamber/opencode.json`) pointing at an OpenAI/Anthropic-
-  compatible gateway.
+- One OpenCode config for every user (`multichamber/opencode.json`) pointing at an OpenAI-compatible
+  gateway.
 
 ## Run
 
