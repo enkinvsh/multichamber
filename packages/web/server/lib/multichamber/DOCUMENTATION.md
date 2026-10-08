@@ -3,7 +3,7 @@
 Everything MultiChamber adds to the server lives here. `install.js` is the only entry point; `server/index.js` calls it twice:
 
 - `installMultichamber(app, 'early')` right after `app.use(compression(...))`, before `bootstrapRuntime.setupBaseRoutes`. Mounts the lockdown guard and `GET /api/multichamber/policy`. It has to precede `setupBaseRoutes` because `/api/system/*`, `/auth/passkey/*`, `/api/client-auth/*`, `/api/passkeys` and `/api/openchamber/update-install` are registered there, some before the UI auth gate.
-- `installMultichamber(app, 'parsed')` right after `uiAuthController = bootstrapResult.uiAuthController`. The JSON body parsers (`core-routes.js` `registerCommonRequestMiddleware`) are installed inside `setupBaseRoutes`, and the fs, settings and projects routes (`featureRoutesRuntime`) and the OpenCode proxy (`startupPipelineRuntime`) come after this point. Mounts the settings key filter and the filesystem root guard.
+- `installMultichamber(app, 'parsed')` right after `uiAuthController = bootstrapResult.uiAuthController`. The JSON body parsers (`core-routes.js` `registerCommonRequestMiddleware`) are installed inside `setupBaseRoutes`, and the fs, settings and projects routes (`featureRoutesRuntime`) and the OpenCode proxy (`startupPipelineRuntime`) come after this point. Mounts the settings key filter, the filesystem root guard and the project guard.
 
 1.x has no enterprise mode, so there is no `enterprise-mode.js` and no `policy.json`.
 
@@ -42,6 +42,23 @@ A blocked request gets `403 { error: 'This setting is managed by MultiChamber.',
 
 Not locked on the server: the dictation WebSocket (`/api/dictation/ws`) is an `upgrade` handler, not an Express route, and the local STT model downloads on its first use; the UI hides dictation in lockdown instead. `POST /api/system/probe-url` stays open because the dev-server preview uses it.
 
-UI side (`packages/ui/src/lib/multichamber/lockdown.ts`): `useMultichamberLockdown()`; `MULTICHAMBER_LOCKED_SETTINGS_PAGES` in `lib/settings/metadata.ts` leave the nav, search and command palette, deep links fall back to the first visible page; provider/MCP/usage/update/integration/dictation/open-in-app entry points are hidden.
+Session sharing (`POST|DELETE /api/session/:id/share`, also `/api/api/...`) is refused as a write; share is off in the slot config.
+
+### Projects (`project-guard.js`)
+
+Mounted in the `parsed` stage after the fs root guard, lockdown only. Root = `MULTICHAMBER_FS_ROOT`, or the home folder when unset. A project path must sit strictly below the root, and no segment below the root may start with `.` (`~/.omo`, `~/.config`, `~/.local/share` hold harness state). The check runs on the `~`-expanded path and again on its `realpath`, so a symlink into a hidden folder is refused too.
+
+Routes that add projects or move the active directory (all other `persistSettings` callers only edit existing project entries, such as `project-icon-routes.js`):
+
+- `POST /api/opencode/directory` (adds/creates a project, sets `activeProjectId` and `lastDirectory`): a forbidden `path` gets `403 { error: 'This folder cannot be a project.', code: 'multichamber_locked' }`; a blank one reaches the route's own `400`.
+- `PUT /api/config/settings`: forbidden `projects` entries are stripped, `activeProjectId` is dropped when it named one, and a forbidden `lastDirectory` is dropped. `lastDirectory` may also point into OpenCode worktrees (`$XDG_DATA_HOME|~/.local/share` + `/opencode/worktree`).
+
+On a successful answer of either route the guard runs `git init` (no commit) in each accepted project that `git rev-parse --is-inside-work-tree` does not report as a work tree, before the JSON goes out, so the Git, Changes and Walkthrough panels work at once. Each directory is checked once per process; a failed `git init` logs a warning and the project add still succeeds.
+
+### Dev-server discovery (`dev-server-ownership.js`)
+
+`createMultichamberDevServerFilter` is passed to `createDevServerScanner({ filterServers })` in `server/index.js`. In lockdown on Linux it keeps a listening port only when its socket inode (from `/proc/net/tcp(6)`) is held, per `/proc/<pid>/fd`, by a strict descendant of the OpenChamber process (parents from `/proc/<pid>/stat`). Ports held by the managed `opencode serve` (pid from the lifecycle module, or any `opencode … serve` command line between it and this server) are dropped, as are ports with no resolvable owner (the harness memory server, other users). Dev servers an agent or a terminal starts are descendants and stay. The same scanner feeds the dev tunnel allowlist, so dropped ports are not tunnelled either.
+
+UI side (`packages/ui/src/lib/multichamber/lockdown.ts`): `useMultichamberLockdown()`; `MULTICHAMBER_LOCKED_SETTINGS_PAGES` in `lib/settings/metadata.ts` leave the nav, search and command palette, deep links fall back to the first visible page; provider/MCP/usage/update/integration/dictation/open-in-app entry points are hidden. The policy fetch starts at bootstrap (`main.tsx`, `renderMobileApp.tsx`); while it is pending the web runtime treats lockdown as on (fail-closed), and a failed fetch means unlocked (a server without the route is not MultiChamber). Also hidden in lockdown: About (sidebar footer, Electron menu), Share/Unshare/copy share link (session menus), the Linear and PR context panels (rail, panel chooser, number keys; persisted tabs are closed), the Usage and MCP rows in "Choose sections", multi-run (sidebar button, palette, message action), the hidden-folders toggle in the directory picker, and the `toggle-memory-debug` palette command (`lib/multichamber/{commands,panels,work-status}.ts`).
 
 This is a product/UX boundary, not a security boundary: the container (read-only rootfs, non-root user, home as the only writable volume) is the security boundary; the terminal can still edit config files in home.

@@ -25,6 +25,7 @@ import { MobileOverlayPanel } from '@/components/ui/MobileOverlayPanel';
 import { Icon } from "@/components/icon/Icon";
 import { opencodeClient } from '@/lib/opencode/client';
 import { useI18n } from '@/lib/i18n';
+import { useMultichamberLockdown } from '@/lib/multichamber/lockdown';
 import { formatShortcutForDisplay } from '@/lib/shortcuts';
 import {
   isFilesystemError,
@@ -179,6 +180,7 @@ export const DirectoryExplorerDialog: React.FC<DirectoryExplorerDialogProps> = (
   const [cloneRemoteUrl, setCloneRemoteUrl] = React.useState('');
   const [selectedGitIdentityId, setSelectedGitIdentityId] = React.useState<string | null>(null);
   const [showHidden, setShowHidden] = React.useState(false);
+  const multichamberLockdown = useMultichamberLockdown();
   const [selectedPaths, setSelectedPaths] = React.useState<string[]>([]);
 
   const explorerRootDirectory = dialogHomeDirectory || homeDirectory;
@@ -306,11 +308,11 @@ export const DirectoryExplorerDialog: React.FC<DirectoryExplorerDialogProps> = (
 
   const filteredEntries = React.useMemo(() => {
     const lowerFilter = browseFilterQuery.toLowerCase();
-    const includeHidden = showHidden || browseFilterQuery.startsWith('.');
+    const includeHidden = !multichamberLockdown && (showHidden || browseFilterQuery.startsWith('.'));
     return entries.filter((entry) => (
       entry.name.toLowerCase().startsWith(lowerFilter) && (includeHidden || !entry.name.startsWith('.'))
     ));
-  }, [browseFilterQuery, entries, showHidden]);
+  }, [browseFilterQuery, entries, multichamberLockdown, showHidden]);
 
   const rows = React.useMemo<BrowseRow[]>(() => {
     const nextRows: BrowseRow[] = [];
@@ -612,7 +614,7 @@ export const DirectoryExplorerDialog: React.FC<DirectoryExplorerDialogProps> = (
     }
   }, [executeRow, finalizeSelection, handleClose, hasHighlightedBrowseItem, highlightedRow, query, rows.length, targetPath, togglePathSelection]);
 
-  const showHiddenToggle = (
+  const showHiddenToggle = multichamberLockdown ? null : (
     <button
       type="button"
       onClick={() => setShowHidden((value) => !value)}

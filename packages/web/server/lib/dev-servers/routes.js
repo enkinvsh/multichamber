@@ -68,7 +68,7 @@ const readProcListeners = async (readFile) => {
   return [...byPort.values()].sort((left, right) => left.port - right.port);
 };
 
-export const createDevServerScanner = ({ spawn, platform, readFile = fsPromises.readFile }) => {
+export const createDevServerScanner = ({ spawn, platform, readFile = fsPromises.readFile, filterServers = null }) => {
   let cache = null;
 
   const scan = async () => {
@@ -103,13 +103,14 @@ export const createDevServerScanner = ({ spawn, platform, readFile = fsPromises.
         return result;
       }
 
-      const servers = selectDevServerCandidates(result.listeners, {
+      const candidates = selectDevServerCandidates(result.listeners, {
         ownPorts,
         ownPids: [process.pid],
       }).map((entry) => ({
         ...entry,
         url: `http://localhost:${entry.port}/`,
       }));
+      const servers = filterServers ? await filterServers(candidates) : candidates;
 
       const value = { ok: true, servers };
       cache = { at: now, value };

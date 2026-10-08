@@ -6,6 +6,8 @@ import { Icon } from '@/components/icon/Icon';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n';
 import { useUIStore } from '@/stores/useUIStore';
+import { useMultichamberLockdown } from '@/lib/multichamber/lockdown';
+import { withoutMultichamberLockedSections } from '@/lib/multichamber/work-status';
 import { SettingsCheckboxRow } from '@/components/sections/shared/SettingsSection';
 import { Button } from '@/components/ui/button';
 import {
@@ -72,6 +74,8 @@ export const WorkStatusSectionsDialog: React.FC<{
   const storedOrder = useUIStore((state) => state.workStatusSectionOrder);
   const setSectionOrder = useUIStore((state) => state.setWorkStatusSectionOrder);
   const sectionOrder = React.useMemo(() => sanitizeWorkStatusSectionOrder(storedOrder), [storedOrder]);
+  const multichamberLockdown = useMultichamberLockdown();
+  const offeredSections = React.useMemo(() => withoutMultichamberLockedSections(sectionOrder, multichamberLockdown), [sectionOrder, multichamberLockdown]);
   const dragging = React.useRef(false);
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
@@ -136,9 +140,9 @@ export const WorkStatusSectionsDialog: React.FC<{
           onDragEnd={handleDragEnd}
           accessibility={accessibility}
         >
-          <SortableContext items={sectionOrder} strategy={verticalListSortingStrategy}>
+          <SortableContext items={offeredSections} strategy={verticalListSortingStrategy}>
             <div className="flex flex-col">
-              {sectionOrder.map((sectionId) => (
+              {offeredSections.map((sectionId) => (
                 <SortableSectionRow
                   key={sectionId}
                   sectionId={sectionId}

@@ -38,6 +38,7 @@ import { WindowsWindowControls } from '@/components/desktop/WindowsWindowControl
 import { UpdateDialog } from '@/components/ui/UpdateDialog';
 import { useDeviceInfo, useTabletStandalonePwaRuntime } from '@/lib/device';
 import { cn } from '@/lib/utils';
+import { useMultichamberLockdown } from '@/lib/multichamber/lockdown';
 import { formatShortcutForDisplay, getEffectiveShortcutCombo, type ShortcutActionId } from '@/lib/shortcuts';
 import { useKeybinds } from '@/hooks/useKeybind';
 import {
@@ -1307,6 +1308,7 @@ export const Header: React.FC = () => {
 
   const showMiniChatHeaderAction = hasElectronDesktopIPC && (isNewSessionDraftOpen || Boolean(currentSessionId));
 
+  const multichamberLockdown = useMultichamberLockdown();
   const renderSessionTabMenu = React.useCallback(({ session, open, isActive, select, closeOtherTabs, components }: SessionTabMenuArgs) => {
     const { Item, Separator } = components;
     const shareUrl = session.share?.url ?? null;
@@ -1321,7 +1323,7 @@ export const Header: React.FC = () => {
           <Icon name="file-copy" className="mr-1 size-4" />{t('sessions.sidebar.session.menu.copyId')}
         </Item>
         <Separator />
-        {shareUrl ? (
+        {multichamberLockdown ? null : shareUrl ? (
           <>
             <Item onClick={() => copySessionShareUrl(shareUrl)}>
               <Icon name="file-copy" className="mr-1 size-4" />{t('sessions.sidebar.session.menu.copyLink')}
@@ -1377,7 +1379,7 @@ export const Header: React.FC = () => {
         </Item>
       </>
     );
-  }, [copySessionIdFor, copySessionShareUrl, currentSession, exportCurrentSession, isChatContext, isCurrentSessionActive, isCurrentSessionMovingToWorktree, isVSCode, moveCurrentSessionToWorktree, renderGuestSessionActionItems, sessionDirectory, shareSessionFor, t, unshareSessionFor]);
+  }, [copySessionIdFor, copySessionShareUrl, currentSession, exportCurrentSession, isChatContext, isCurrentSessionActive, isCurrentSessionMovingToWorktree, isVSCode, moveCurrentSessionToWorktree, multichamberLockdown, renderGuestSessionActionItems, sessionDirectory, shareSessionFor, t, unshareSessionFor]);
 
   const renderDesktop = () => (
     <div
@@ -1541,7 +1543,7 @@ export const Header: React.FC = () => {
                     <SessionAiRenameMenuItem sessionID={currentSessionId} directory={sessionDirectory} open={isHeaderSessionMenuOpen} Item={DropdownMenuItem} />
                     <DropdownMenuItem onClick={() => currentSessionId && copySessionIdFor(currentSessionId)}><Icon name="file-copy" className="mr-1 size-4" />{t('sessions.sidebar.session.menu.copyId')}</DropdownMenuItem>
                     <DropdownMenuSeparator />
-                    {currentSession?.shareUrl ? (
+                    {multichamberLockdown ? null : currentSession?.shareUrl ? (
                       <>
                         <DropdownMenuItem onClick={() => copySessionShareUrl(currentSession?.shareUrl)}><Icon name="file-copy" className="mr-1 size-4" />{t('sessions.sidebar.session.menu.copyLink')}</DropdownMenuItem>
                         <DropdownMenuItem onClick={() => { if (currentSessionId) void unshareSessionFor(currentSessionId); }}><Icon name="link-unlink-m" className="mr-1 size-4" />{t('sessions.sidebar.session.menu.unshare')}</DropdownMenuItem>

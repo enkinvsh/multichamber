@@ -11,6 +11,7 @@ import { sessionEvents } from '@/lib/sessionEvents';
 import { createWorktreeSession } from '@/lib/worktreeSessionCreator';
 import { showOpenCodeStatus } from '@/lib/openCodeStatus';
 import { addSelectionToChat } from '@/lib/addSelectionToChat';
+import { isMultichamberLockedMenuAction } from '@/lib/multichamber/commands';
 
 const getActiveElementSelectedText = (): string => {
   if (typeof document === 'undefined') {
@@ -171,6 +172,7 @@ export const useMenuActions = (
 
   const handleAction = React.useCallback(
     (action: MenuAction) => {
+      if (isMultichamberLockedMenuAction(action)) return;
       switch (action) {
         case 'about':
           setAboutDialogOpen(true);

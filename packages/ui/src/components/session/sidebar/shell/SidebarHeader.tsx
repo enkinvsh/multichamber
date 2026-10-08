@@ -29,7 +29,7 @@ type Props = {
   showRecentControls: boolean;
   handleOpenDirectoryDialog: () => void;
   onOpenScheduled: () => void;
-  onOpenMultiRun: () => void;
+  onOpenMultiRun?: () => void;
   canOpenMultiRun: boolean;
   onOpenArchive: () => void;
   headerActionIconClass: string;
@@ -126,20 +126,22 @@ export function SidebarHeader(props: Props): React.ReactNode {
               <TooltipContent side="bottom" sideOffset={4}><p>{t('sessions.sidebar.header.actions.scheduledTasks')}</p></TooltipContent>
             </Tooltip>
 
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  onClick={onOpenMultiRun}
-                  className={cn(headerActionButtonClass, 'text-muted-foreground hover:text-foreground hover:bg-transparent')}
-                  aria-label={t('sessions.sidebar.header.actions.newMultiRun')}
-                  disabled={!canOpenMultiRun}
-                >
-                  <ArrowsMerge className={headerActionIconClass} />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom" sideOffset={4}><p>{t('sessions.sidebar.header.actions.newMultiRun')}</p></TooltipContent>
-            </Tooltip>
+            {onOpenMultiRun ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={onOpenMultiRun}
+                    className={cn(headerActionButtonClass, 'text-muted-foreground hover:text-foreground hover:bg-transparent')}
+                    aria-label={t('sessions.sidebar.header.actions.newMultiRun')}
+                    disabled={!canOpenMultiRun}
+                  >
+                    <ArrowsMerge className={headerActionIconClass} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" sideOffset={4}><p>{t('sessions.sidebar.header.actions.newMultiRun')}</p></TooltipContent>
+              </Tooltip>
+            ) : null}
 
             <Tooltip>
               <TooltipTrigger asChild>

@@ -13,6 +13,8 @@ import { useKeybinds } from '@/hooks/useKeybind';
 import { createWorktreeSession } from '@/lib/worktreeSessionCreator';
 import { useConfigStore } from '@/stores/useConfigStore';
 import { canUseElectronDesktopIPC, invokeDesktop, isVSCodeRuntime } from '@/lib/desktop';
+import { isMultichamberLockdown } from '@/lib/multichamber/lockdown';
+import { withoutMultichamberLockedSurfaces } from '@/lib/multichamber/panels';
 import {
   eventMatchesShortcut,
   eventMatchesShortcutPrefix,
@@ -512,7 +514,7 @@ export const useKeyboardShortcuts = () => {
         if (!state.isMobile && effectiveDirectory) {
           const directory = normalizeContextPanelDirectoryKey(effectiveDirectory);
           const panel = state.contextPanelByDirectory[directory];
-          const visibleSurfaces = getVisibleContextRailSurfaces({
+          const visibleSurfaces = withoutMultichamberLockedSurfaces(getVisibleContextRailSurfaces({
             railOrder: state.contextRailOrder,
             hiddenSurfaces: state.contextRailHiddenSurfaces,
             planModeEnabled: useFeatureFlagsStore.getState().planModeEnabled,
@@ -522,7 +524,7 @@ export const useKeyboardShortcuts = () => {
             linearConnected: useLinearAuthStore.getState().status?.connected === true,
             githubConnected: useGitHubAuthStore.getState().status?.connected === true,
             extras: enabledGuestSurfaces(useGuestsStore.getState().guests, getRuntimeUrlResolver().authenticatedAsset),
-          });
+          }), isMultichamberLockdown());
           const target = visibleSurfaces[switchSurfaceDigit - 1];
           if (target) {
             event.preventDefault();

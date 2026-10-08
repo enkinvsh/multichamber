@@ -69,6 +69,9 @@ const RULES = [
   { path: '/api/api/integration', block: 'writes' },
   { path: '/api/credential', block: 'writes' },
   { path: '/api/integration', block: 'writes' },
+  // OpenCode session sharing (POST|DELETE /session/:id/share): share is off in the slot config.
+  { path: '/api/session/*/share', block: 'writes' },
+  { path: '/api/api/session/*/share', block: 'writes' },
 ].map((rule) => ({ ...rule, segments: rule.path.split('/').filter(Boolean) }));
 
 /** Writes that a matching rule would block but that stay open. */

@@ -39,7 +39,7 @@ import { registerTtsRoutes } from './lib/tts/routes.js';
 import { detectSayTtsCapability } from './lib/tts/capability-runtime.js';
 import { createTerminalRuntime } from './lib/terminal/runtime.js';
 import { createDictationRuntime } from './lib/dictation/runtime.js';
-import { installMultichamber } from './lib/multichamber/install.js';
+import { createMultichamberDevServerFilter, installMultichamber } from './lib/multichamber/install.js';
 import {
   createGlobalUiEventBroadcaster,
   createGlobalMessageStreamHub,
@@ -1936,7 +1936,11 @@ async function main(options = {}) {
 
   // One scanner backs both discovery and the tunnel allowlist, so a port the
   // user can see is exactly a port the tunnel will dial.
-  const devServerScanner = createDevServerScanner({ spawn, platform: process.platform });
+  const devServerScanner = createDevServerScanner({
+    spawn,
+    platform: process.platform,
+    filterServers: createMultichamberDevServerFilter({ platform: process.platform, getOpenCodePid: () => openCodeProcess?.pid }),
+  });
   const listDevServers = () => devServerScanner.discover({
     ownPorts: [port, openCodePort].filter((value) => Number.isInteger(value) && value > 0),
   });

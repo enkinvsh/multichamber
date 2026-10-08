@@ -12,6 +12,8 @@ import {
 } from '@/components/ui/dialog';
 import { useGuestSurfaces } from '@/hooks/useGuestSurfaces';
 import { sortContextSurfaces } from '@/lib/surfaces/registry';
+import { useMultichamberLockdown } from '@/lib/multichamber/lockdown';
+import { withoutMultichamberLockedSurfaces } from '@/lib/multichamber/panels';
 
 /**
  * Which surfaces the context rail shows. Everything is on by default and the
@@ -33,9 +35,10 @@ export const ContextRailSurfacesDialog: React.FC<{
   // The full registry in the user's rail order — including surfaces a runtime
   // filter currently drops, so a choice made on desktop is editable anywhere.
   const guestSurfaces = useGuestSurfaces();
+  const multichamberLockdown = useMultichamberLockdown();
   const surfaces = React.useMemo(
-    () => sortContextSurfaces(contextRailOrder, guestSurfaces),
-    [contextRailOrder, guestSurfaces],
+    () => withoutMultichamberLockedSurfaces(sortContextSurfaces(contextRailOrder, guestSurfaces), multichamberLockdown),
+    [contextRailOrder, guestSurfaces, multichamberLockdown],
   );
 
   const allVisible = hidden.length === 0;

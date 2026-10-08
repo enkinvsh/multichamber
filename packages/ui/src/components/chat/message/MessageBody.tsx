@@ -10,6 +10,7 @@ import type { ToolPart as ToolPartType } from '@opencode-ai/sdk/v2';
 import type { StreamPhase, ToolPopupContent, AgentMentionInfo } from './types';
 import type { TurnActivityGroup, TurnChangedFile, TurnGroupingContext } from '../lib/turns/types';
 import { cn } from '@/lib/utils';
+import { useMultichamberLockdown } from '@/lib/multichamber/lockdown';
 import { WorkerHighlightedCode } from '@/components/code/WorkerHighlightedCode';
 import { isEmptyTextPart, extractTextContent } from './partUtils';
 import { FadeInOnReveal } from './FadeInOnReveal';
@@ -1458,7 +1459,8 @@ const AssistantMessageBody = React.memo(({
     const isVSCode = isVSCodeRuntime();
     const isMiniChatSurface = chatSurfaceMode === 'mini-chat';
     const canUseProjectPlanActions = !isVSCode && !isMiniChatSurface && !isMobile;
-    const canShowMultiRunAction = !isVSCode && !isMiniChatSurface && !isMobile;
+    const multichamberLockdown = useMultichamberLockdown();
+    const canShowMultiRunAction = !isVSCode && !isMiniChatSurface && !isMobile && !multichamberLockdown;
 
     const messagePreviewUrl = React.useMemo(() => {
         if (isVSCode || isMobile || isMiniChatSurface) {

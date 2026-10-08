@@ -5,12 +5,16 @@
  * hides the ways in. The flag comes from `GET /api/multichamber/policy`.
  *
  * A server without that route (plain OpenChamber) answers 404 and is unlocked.
- * A failed request is not an answer: the store stays unloaded and the next
- * caller asks again.
+ * A failed request keeps upstream behaviour (unlocked) and the next caller asks
+ * again. Until the first answer arrives the web runtime fails closed: locked
+ * entry points stay hidden, so nothing (Settings' default page, for one) acts
+ * on a guess. `startMultichamberPolicyLoad` runs at bootstrap to keep that
+ * window short.
  */
 import React from 'react';
 import { z } from 'zod';
 import { create } from 'zustand';
+import { isWebRuntime } from '@/lib/desktop';
 import { runtimeFetch } from '@/lib/runtime-fetch';
 
 const policySchema = z.object({
@@ -22,15 +26,21 @@ type MultichamberPolicy = z.infer<typeof policySchema>;
 
 const UNMANAGED_POLICY: MultichamberPolicy = { lockdown: false, fsRoot: null };
 
+/** `unknown`: no answer yet; `failed`: last request failed, retried on demand. */
+type PolicyStatus = 'unknown' | 'loaded' | 'failed';
+
 type MultichamberPolicyStore = {
   policy: MultichamberPolicy;
-  loaded: boolean;
+  status: PolicyStatus;
 };
 
 const useMultichamberPolicyStore = create<MultichamberPolicyStore>(() => ({
   policy: UNMANAGED_POLICY,
-  loaded: false,
+  status: 'unknown',
 }));
+
+const resolveLockdown = (state: MultichamberPolicyStore): boolean =>
+  state.status === 'unknown' ? isWebRuntime() : state.policy.lockdown;
 
 let inFlightLoad: Promise<void> | null = null;
 
@@ -43,14 +53,15 @@ const fetchPolicy = async (): Promise<MultichamberPolicy> => {
 
 /** Loads the policy once; concurrent callers share one request. */
 const loadMultichamberPolicy = (): Promise<void> => {
-  if (useMultichamberPolicyStore.getState().loaded) return Promise.resolve();
+  if (useMultichamberPolicyStore.getState().status === 'loaded') return Promise.resolve();
   if (inFlightLoad) return inFlightLoad;
   inFlightLoad = fetchPolicy()
     .then((policy) => {
-      useMultichamberPolicyStore.setState({ policy, loaded: true });
+      useMultichamberPolicyStore.setState({ policy, status: 'loaded' });
     })
     .catch((error: Error) => {
       console.warn('[multichamber] policy unavailable, will retry:', error.message);
+      useMultichamberPolicyStore.setState({ policy: UNMANAGED_POLICY, status: 'failed' });
     })
     .finally(() => {
       inFlightLoad = null;
@@ -58,10 +69,15 @@ const loadMultichamberPolicy = (): Promise<void> => {
   return inFlightLoad;
 };
 
+/** Called once at app bootstrap so the policy is known before Settings opens. */
+export const startMultichamberPolicyLoad = (): void => {
+  void loadMultichamberPolicy();
+};
+
 /** Whether the connected server runs in MultiChamber lockdown. */
 export const useMultichamberLockdown = (): boolean => {
-  const lockdown = useMultichamberPolicyStore((state) => state.policy.lockdown);
-  const loaded = useMultichamberPolicyStore((state) => state.loaded);
+  const lockdown = useMultichamberPolicyStore(resolveLockdown);
+  const loaded = useMultichamberPolicyStore((state) => state.status === 'loaded');
   React.useEffect(() => {
     if (!loaded) void loadMultichamberPolicy();
   }, [loaded]);
@@ -70,4 +86,4 @@ export const useMultichamberLockdown = (): boolean => {
 
 /** Non-reactive read for stores and callbacks. */
 export const isMultichamberLockdown = (): boolean =>
-  useMultichamberPolicyStore.getState().policy.lockdown;
+  resolveLockdown(useMultichamberPolicyStore.getState());

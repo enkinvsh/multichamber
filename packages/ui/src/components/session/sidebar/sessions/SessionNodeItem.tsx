@@ -15,6 +15,7 @@ import {
 import { dropdownMenuItemClass, dropdownMenuPopupClass, dropdownMenuSeparatorClass, dropdownMenuSubTriggerClass } from '@/components/ui/dropdown-menu.styles';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn, formatDirectoryName } from '@/lib/utils';
+import { useMultichamberLockdown } from '@/lib/multichamber/lockdown';
 import { canUseElectronDesktopIPC, invokeDesktop, isVSCodeRuntime } from '@/lib/desktop';
 import { toast } from '@/components/ui';
 import { Button } from '@/components/ui/button';
@@ -279,6 +280,7 @@ const QuickSessionAction = React.memo(function QuickSessionAction({
 function SessionNodeItemComponent(props: SessionNodeItemProps): React.ReactNode {
   streamPerfCount('ui.sidebar_session_node.render');
   const { t } = useI18n();
+  const multichamberLockdown = useMultichamberLockdown();
   const {
     node,
     depth = 0,
@@ -1065,7 +1067,7 @@ function SessionNodeItemComponent(props: SessionNodeItemProps): React.ReactNode 
         {isPinnedSession ? <Icon name="unpin" className="mr-1 h-4 w-4" /> : <Icon name="pushpin" className="mr-1 h-4 w-4" />}
         {isPinnedSession ? t('sessions.sidebar.session.menu.unpin') : t('sessions.sidebar.session.menu.pin')}
       </Item>
-      {!resolvedSession.share ? (
+      {multichamberLockdown ? null : !resolvedSession.share ? (
         <Item onClick={() => handleShareSession(resolvedSession)} className="[&>svg]:mr-1">
           <Icon name="share-2" className="mr-1 h-4 w-4" />
           {t('sessions.sidebar.session.menu.share')}

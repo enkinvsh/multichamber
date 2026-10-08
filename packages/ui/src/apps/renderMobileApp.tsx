@@ -14,6 +14,7 @@ import { markAppBootReady } from './appBootReady';
 import { installMobileWidgetSnapshotBridge } from './mobileWidgetSnapshot';
 import { applyPersistedDirectoryPreferences } from '@/lib/directoryPersistence';
 import { initializeLocale, I18nProvider } from '@/lib/i18n';
+import { startMultichamberPolicyLoad } from '@/lib/multichamber/lockdown';
 import { initializeAppearancePreferences, syncDesktopSettings } from '@/lib/persistence';
 import { startModelPrefsAutoSave } from '@/lib/modelPrefsAutoSave';
 import { startTypographyWatcher } from '@/lib/typographyWatcher';
@@ -23,6 +24,7 @@ import { MobileApp } from './MobileApp';
 
 const initializeSharedPreferences = () => {
   initializeLocale();
+  startMultichamberPolicyLoad();
 
   void initializeAppearancePreferences().then(() => {
     void Promise.all([

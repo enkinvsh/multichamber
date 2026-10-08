@@ -643,7 +643,7 @@ const SessionSidebarComponent: React.FC<SessionSidebarProps> = ({
           if (mobileVariant) setSessionSwitcherOpen(false);
           setScheduledTasksDialogOpen(true);
         }}
-        onOpenMultiRun={handleOpenMultiRunFromHeader}
+        onOpenMultiRun={multichamberLockdown ? undefined : handleOpenMultiRunFromHeader}
         canOpenMultiRun={projects.length > 0}
         onOpenArchive={() => {
           if (mobileVariant) setSessionSwitcherOpen(false);
@@ -725,7 +725,7 @@ const SessionSidebarComponent: React.FC<SessionSidebarProps> = ({
       <SidebarFooter
         onOpenSettings={handleOpenSettings}
         onOpenShortcuts={toggleHelpDialog}
-        onOpenAbout={() => setAboutDialogOpen(true)}
+        onOpenAbout={multichamberLockdown ? undefined : () => setAboutDialogOpen(true)}
         onOpenUpdate={handleOpenUpdateDialog}
         showRuntimeButtons={!isVSCode}
         showUpdateButton={showSidebarUpdateButton}

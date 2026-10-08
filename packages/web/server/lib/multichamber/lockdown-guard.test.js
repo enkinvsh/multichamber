@@ -290,6 +290,18 @@ describe('createLockdownGuard', () => {
     const outcome = invoke(createLockdownGuard({ enabled: true }), { method: 'GET', url: '/api/quota/credentials/openai' });
     expect(outcome.status).toBe(403);
   });
+
+  it('refuses sharing and unsharing a session but keeps session reads and other session writes', () => {
+    for (const url of ['/api/session/ses_1/share', '/api/api/session/ses_1/share', '/api/session/ses_1/share?directory=/home/dev/p']) {
+      expectRefused('POST', url);
+      expectRefused('DELETE', url);
+      expectAllowed('GET', url);
+    }
+    expectAllowed('GET', '/api/session/ses_1');
+    expectAllowed('POST', '/api/session/ses_1/message');
+    expectAllowed('POST', '/api/session/ses_1/prompt_async');
+    expectAllowed('DELETE', '/api/session/ses_1');
+  });
 });
 
 describe('createLockdownSettingsFilter', () => {

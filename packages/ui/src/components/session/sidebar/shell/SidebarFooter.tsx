@@ -7,7 +7,7 @@ import { useI18n } from '@/lib/i18n';
 type Props = {
   onOpenSettings: () => void;
   onOpenShortcuts: () => void;
-  onOpenAbout: () => void;
+  onOpenAbout?: () => void;
   onOpenUpdate: () => void;
   showRuntimeButtons?: boolean;
   showUpdateButton?: boolean;
@@ -49,14 +49,16 @@ export function SidebarFooter({
             </TooltipTrigger>
             <TooltipContent side="top" sideOffset={4}><p>{t('sessions.sidebar.footer.actions.shortcuts')}</p></TooltipContent>
           </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button type="button" onClick={onOpenAbout} className={footerButtonClassName} aria-label={t('sessions.sidebar.footer.actions.aboutOpenChamber')}>
-                <Icon name="information" className="h-4.5 w-4.5" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="top" sideOffset={4}><p>{t('sessions.sidebar.footer.actions.aboutOpenChamber')}</p></TooltipContent>
-          </Tooltip>
+          {onOpenAbout ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button type="button" onClick={onOpenAbout} className={footerButtonClassName} aria-label={t('sessions.sidebar.footer.actions.aboutOpenChamber')}>
+                  <Icon name="information" className="h-4.5 w-4.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" sideOffset={4}><p>{t('sessions.sidebar.footer.actions.aboutOpenChamber')}</p></TooltipContent>
+            </Tooltip>
+          ) : null}
         </>
       ) : null}
       {showUpdateButton ? (

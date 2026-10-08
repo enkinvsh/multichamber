@@ -24,6 +24,8 @@ import { useEffectiveDirectory } from '@/hooks/useEffectiveDirectory';
 import { useDeviceInfo } from '@/lib/device';
 import { isVSCodeRuntime } from '@/lib/desktop';
 import { useI18n } from '@/lib/i18n';
+import { useMultichamberLockdown } from '@/lib/multichamber/lockdown';
+import { multichamberLockedTabIds, withoutMultichamberLockedSurfaces } from '@/lib/multichamber/panels';
 import {
   getVisibleContextRailSurfaces,
   sortContextSurfaces,
@@ -176,6 +178,7 @@ export const ContextPanelRail: React.FC = () => {
   const setContextRailOrder = useUIStore((state) => state.setContextRailOrder);
   const openContextSurface = useUIStore((state) => state.openContextSurface);
   const closeContextPanel = useUIStore((state) => state.closeContextPanel);
+  const closeContextPanelTabs = useUIStore((state) => state.closeContextPanelTabs);
   const shortcutOverrides = useUIStore((state) => state.shortcutOverrides);
   const planModeEnabled = useFeatureFlagsStore((state) => state.planModeEnabled);
   const linearAuthChecked = useLinearAuthStore((state) => state.hasChecked);
@@ -273,8 +276,9 @@ export const ContextPanelRail: React.FC = () => {
   const activeMode = panelState?.isOpen ? activeTab?.mode ?? null : null;
   const changedFilesCount = gitStatus?.files.length ?? 0;
 
+  const multichamberLockdown = useMultichamberLockdown();
   const surfaces = React.useMemo(() => {
-    return getVisibleContextRailSurfaces({
+    return withoutMultichamberLockedSurfaces(getVisibleContextRailSurfaces({
       railOrder: contextRailOrder,
       hiddenSurfaces: contextRailHiddenSurfaces,
       planModeEnabled,
@@ -284,8 +288,13 @@ export const ContextPanelRail: React.FC = () => {
       linearConnected,
       githubConnected,
       extras: guestSurfaces,
-    });
-  }, [contextRailHiddenSurfaces, contextRailOrder, githubConnected, guestSurfaces, linearConnected, planModeEnabled, screenWidth, tabs]);
+    }), multichamberLockdown);
+  }, [contextRailHiddenSurfaces, contextRailOrder, githubConnected, guestSurfaces, linearConnected, multichamberLockdown, planModeEnabled, screenWidth, tabs]);
+
+  React.useEffect(() => {
+    const lockedTabIds = multichamberLockedTabIds(tabs, multichamberLockdown);
+    if (directoryKey && lockedTabIds.length > 0) closeContextPanelTabs(directoryKey, lockedTabIds);
+  }, [closeContextPanelTabs, directoryKey, multichamberLockdown, tabs]);
 
   // A surface whose integration disconnected closes rather than lingering as
   // an active panel with no rail icon.

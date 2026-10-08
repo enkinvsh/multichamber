@@ -41,6 +41,7 @@ import { formatShortcutForDisplay, getEffectiveShortcutCombo, shortcutRegistry }
 import { showOpenCodeStatus } from '@/lib/openCodeStatus';
 import { canUseElectronDesktopIPC, invokeDesktop, isDesktopShell, isVSCodeRuntime, isWebRuntime } from '@/lib/desktop';
 import { useMultichamberLockdown } from '@/lib/multichamber/lockdown';
+import { withoutMultichamberLockedCommands } from '@/lib/multichamber/commands';
 import { SETTINGS_PAGE_METADATA, type SettingsRuntimeContext } from '@/lib/settings/metadata';
 
 const EMPTY_PINNED_SESSION_IDS = new Set<string>();
@@ -171,6 +172,7 @@ export const CommandPalette: React.FC = () => {
   // ---------------------------------------------------------------------------
   // Commands
   // ---------------------------------------------------------------------------
+  const multichamberLockdown = useMultichamberLockdown();
   const commands = React.useMemo<CommandEntry[]>(() => {
     const list: CommandEntry[] = [
       {
@@ -379,11 +381,12 @@ export const CommandPalette: React.FC = () => {
         }),
       });
     }
-    return list;
+    return withoutMultichamberLockedCommands(list, multichamberLockdown);
   }, [
     t,
     run,
     isMobile,
+    multichamberLockdown,
         setSessionSwitcherOpen,
     openNewSessionDraft,
     toggleSidebar,
@@ -404,7 +407,6 @@ export const CommandPalette: React.FC = () => {
   // Settings sub-pages (only show when there's a query)
   // ---------------------------------------------------------------------------
   const routingAvailable = useUIStore((state) => state.routingFeatureAvailable);
-  const multichamberLockdown = useMultichamberLockdown();
   const settingsRuntimeCtx = React.useMemo<SettingsRuntimeContext>(() => {
     const isDesktop = isDesktopShell();
     return { isVSCode: isVSCodeRuntime(), isWeb: !isDesktop && isWebRuntime(), isDesktop, isMobile, routingAvailable, multichamberLockdown };

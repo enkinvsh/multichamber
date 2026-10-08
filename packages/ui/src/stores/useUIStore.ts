@@ -14,6 +14,8 @@ import { directoryMayHaveActiveProjectAction, useTerminalStore } from '@/stores/
 import { useFilesViewTabsStore } from './useFilesViewTabsStore';
 import { isWindowsArm64 } from '@/lib/platform';
 import { isVSCodeRuntime } from '@/lib/desktop';
+import { isMultichamberLockdown } from '@/lib/multichamber/lockdown';
+import { isMultichamberHiddenContextMode } from '@/lib/multichamber/panels';
 import { isContextPanelMode, type ContextPanelMode } from '@/lib/surfaces/modes';
 import { getRuntimeKey, isTransientRuntimeKey } from '@/lib/runtime-switch';
 import { sanitizeWorkStatusSectionOrder, type WorkStatusSectionId } from '@/components/chat/work-status/sections';
@@ -1500,7 +1502,7 @@ export const useUIStore = create<UIStore>()(
 
         openContextPanelTab: (directory, tab, options) => {
           const normalizedDirectory = normalizeDirectoryPath((directory || '').trim());
-          if (!normalizedDirectory) {
+          if (!normalizedDirectory || isMultichamberHiddenContextMode(tab.mode)) {
             return;
           }
 
@@ -2592,6 +2594,7 @@ export const useUIStore = create<UIStore>()(
         },
 
         openMultiRunLauncher: () => {
+          if (isMultichamberLockdown()) return;
           set({
             openGuestPageId: null,
             isMultiRunLauncherOpen: true,
@@ -2604,6 +2607,7 @@ export const useUIStore = create<UIStore>()(
         },
 
         openMultiRunLauncherWithPrompt: (prompt) => {
+          if (isMultichamberLockdown()) return;
           set({
             openGuestPageId: null,
             isMultiRunLauncherOpen: true,
