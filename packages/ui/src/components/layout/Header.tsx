@@ -999,6 +999,7 @@ export const Header: React.FC = () => {
   // Same resolution the titlebar overlay used to own: worktree → session →
   // draft → project path, sticky across session switches.
   const projectActionsContext = useProjectActionsContext();
+  const multichamberLockdown = useMultichamberLockdown();
 
 
   const planModeEnabled = useFeatureFlagsStore((state) => state.planModeEnabled);
@@ -1277,7 +1278,9 @@ export const Header: React.FC = () => {
 
   const desktopSidebarActions = (
     <>
-      {projectActionsContext ? (
+      {/* MultiChamber lockdown: dev-server auto-discovery and project actions have
+          no preview in a hosted slot; the terminal runs commands instead. */}
+      {projectActionsContext && !multichamberLockdown ? (
         <ProjectActionsButton
           projectRef={projectActionsContext.projectRef}
           directory={projectActionsContext.directory}
@@ -1308,7 +1311,6 @@ export const Header: React.FC = () => {
 
   const showMiniChatHeaderAction = hasElectronDesktopIPC && (isNewSessionDraftOpen || Boolean(currentSessionId));
 
-  const multichamberLockdown = useMultichamberLockdown();
   const renderSessionTabMenu = React.useCallback(({ session, open, isActive, select, closeOtherTabs, components }: SessionTabMenuArgs) => {
     const { Item, Separator } = components;
     const shareUrl = session.share?.url ?? null;

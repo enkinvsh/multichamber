@@ -9,6 +9,7 @@ import {
 } from '@/components/sections/projects/useProjectIdentityForm';
 import { useProjectIdentityAutoSave } from '@/components/sections/projects/useProjectIdentityAutoSave';
 import type { ProjectEntry } from '@/lib/api/types';
+import { useMultichamberLockdown } from '@/lib/multichamber/lockdown';
 
 type ProjectSettingsPanelProps = {
   project: ProjectEntry | null;
@@ -27,6 +28,7 @@ export const ProjectSettingsPanel: React.FC<ProjectSettingsPanelProps> = ({
   showWorktrees = true,
 }) => {
   const form = useProjectIdentityForm(project);
+  const multichamberLockdown = useMultichamberLockdown();
 
   const projectRef = React.useMemo(() => {
     if (!project) {
@@ -48,7 +50,9 @@ export const ProjectSettingsPanel: React.FC<ProjectSettingsPanelProps> = ({
   return (
     <div className="space-y-0">
       <ProjectIdentityFields form={form} />
-      <ProjectActionsSection projectRef={projectRef} />
+      {/* MultiChamber lockdown hides the header's project-actions runner, so
+          there is nothing to configure here. */}
+      {multichamberLockdown ? null : <ProjectActionsSection projectRef={projectRef} />}
       {showWorktrees ? <WorktreeSectionContent projectRef={projectRef} /> : null}
       <SharedProjectConfigSection projectRef={projectRef} />
     </div>
