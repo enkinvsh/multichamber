@@ -1314,6 +1314,7 @@ export const dict: Record<I18nKey, string> = {
   'contextPanel.browser.history.label': '最近访问的地址',
   'contextPanel.browser.history.forget': '从历史记录中移除',
   'contextPanel.browser.newTab': '新建浏览器标签页',
+  'contextPanel.browser.toast.workspacePreviewUnavailable': '暂不支持预览工作区中的开发服务器。',
   'contextPanel.browser.empty': '网页浏览器',
   'contextPanel.browser.emptyHint': '在上方输入网址开始浏览',
   'contextPanel.browser.inspectUnavailable': '无法从浏览器面板检查此页面。',

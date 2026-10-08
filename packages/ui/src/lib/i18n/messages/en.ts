@@ -1313,6 +1313,7 @@ export const dict = {
   'contextPanel.browser.history.label': 'Recent addresses',
   'contextPanel.browser.history.forget': 'Remove from history',
   'contextPanel.browser.newTab': 'New browser tab',
+  'contextPanel.browser.toast.workspacePreviewUnavailable': 'Previewing dev servers from your workspace is not available yet.',
   'contextPanel.browser.empty': 'Web browser',
   'contextPanel.browser.emptyHint': 'Enter an address above to start browsing the web',
   'contextPanel.browser.inspectUnavailable': 'This page cannot be inspected from the browser panel.',

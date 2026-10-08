@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { CONTEXT_SURFACES, sortContextSurfaces } from '../lib/surfaces/registry';
+import { setMultichamberLockdownForTests } from '../lib/multichamber/lockdown';
 import { useTerminalStore } from './useTerminalStore';
 import { useUIStore } from './useUIStore';
 
@@ -9,6 +10,7 @@ const getTerminalTab = (directory: string) => getContextPanelTabs(directory).fin
 const originalPersistOptions = useUIStore.persist.getOptions();
 
 beforeEach(() => {
+  setMultichamberLockdownForTests(false);
   useUIStore.setState({ contextPanelByDirectory: {}, contextRailOrder: [] });
   useTerminalStore.getState().clearAll();
 });

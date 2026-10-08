@@ -1113,6 +1113,7 @@ export const dict = {
   'contextPanel.browser.history.label': 'Zuletzt besuchte Adressen',
   'contextPanel.browser.history.forget': 'Aus dem Verlauf entfernen',
   'contextPanel.browser.newTab': 'Neuer Browser-Tab',
+  'contextPanel.browser.toast.workspacePreviewUnavailable': 'Die Vorschau von Entwicklungsservern aus Ihrem Arbeitsbereich ist noch nicht verfügbar.',
   'contextPanel.browser.empty': 'Webbrowser',
   'contextPanel.browser.emptyHint': 'Geben Sie oben eine Adresse ein, um mit dem Surfen im Web zu beginnen',
   'contextPanel.browser.inspectUnavailable': 'Diese Seite kann nicht aus dem Browser-Panel inspectiert werden.',

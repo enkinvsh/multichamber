@@ -1131,6 +1131,7 @@ export const dict = {
   'contextPanel.browser.history.label': 'Adresses récentes',
   'contextPanel.browser.history.forget': 'Retirer de l’historique',
   'contextPanel.browser.newTab': 'Nouvel onglet du navigateur',
+  'contextPanel.browser.toast.workspacePreviewUnavailable': 'L\'aperçu des serveurs de développement de votre espace de travail n\'est pas encore disponible.',
   'contextPanel.browser.empty': 'Navigateur Internet',
   'contextPanel.browser.emptyHint': 'Entrez une adresse ci-dessus pour commencer à naviguer sur le Web',
   'contextPanel.tab.closeTabAria': 'Fermer l\'onglet {label}',

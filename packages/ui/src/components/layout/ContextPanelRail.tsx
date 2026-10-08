@@ -24,7 +24,7 @@ import { useEffectiveDirectory } from '@/hooks/useEffectiveDirectory';
 import { useDeviceInfo } from '@/lib/device';
 import { isVSCodeRuntime } from '@/lib/desktop';
 import { useI18n } from '@/lib/i18n';
-import { useMultichamberLockdown } from '@/lib/multichamber/lockdown';
+import { useMultichamberLockdown, useMultichamberLockdownConfirmed } from '@/lib/multichamber/lockdown';
 import { multichamberLockedTabIds, withoutMultichamberLockedSurfaces } from '@/lib/multichamber/panels';
 import {
   getVisibleContextRailSurfaces,
@@ -291,10 +291,11 @@ export const ContextPanelRail: React.FC = () => {
     }), multichamberLockdown);
   }, [contextRailHiddenSurfaces, contextRailOrder, githubConnected, guestSurfaces, linearConnected, multichamberLockdown, planModeEnabled, screenWidth, tabs]);
 
+  const multichamberLockdownConfirmed = useMultichamberLockdownConfirmed();
   React.useEffect(() => {
-    const lockedTabIds = multichamberLockedTabIds(tabs, multichamberLockdown);
+    const lockedTabIds = multichamberLockedTabIds(tabs, multichamberLockdownConfirmed);
     if (directoryKey && lockedTabIds.length > 0) closeContextPanelTabs(directoryKey, lockedTabIds);
-  }, [closeContextPanelTabs, directoryKey, multichamberLockdown, tabs]);
+  }, [closeContextPanelTabs, directoryKey, multichamberLockdownConfirmed, tabs]);
 
   // A surface whose integration disconnected closes rather than lingering as
   // an active panel with no rail icon.

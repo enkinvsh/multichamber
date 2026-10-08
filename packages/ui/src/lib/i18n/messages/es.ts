@@ -1314,6 +1314,7 @@ export const dict: Record<I18nKey, string> = {
   "contextPanel.browser.history.label": "Direcciones recientes",
   "contextPanel.browser.history.forget": "Quitar del historial",
   "contextPanel.browser.newTab": "Nueva pestaña del navegador",
+  "contextPanel.browser.toast.workspacePreviewUnavailable": "La vista previa de servidores de desarrollo de tu espacio de trabajo aún no está disponible.",
   "contextPanel.browser.empty": "Navegador web",
   "contextPanel.browser.emptyHint": "Ingrese una dirección arriba para comenzar a navegar",
   "contextPanel.browser.inspectUnavailable": "Esta página no se puede inspeccionar desde el panel del navegador.",

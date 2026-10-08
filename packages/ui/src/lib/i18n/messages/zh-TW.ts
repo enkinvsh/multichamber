@@ -1326,6 +1326,7 @@ export const dict: Record<I18nKey, string> = {
   'contextPanel.browser.history.label': '最近造訪的網址',
   'contextPanel.browser.history.forget': '從歷史紀錄中移除',
   'contextPanel.browser.newTab': '新增瀏覽器分頁',
+  'contextPanel.browser.toast.workspacePreviewUnavailable': '尚不支援預覽工作區中的開發伺服器。',
   'contextPanel.browser.empty': '網頁瀏覽器',
   'contextPanel.browser.emptyHint': '在上方輸入網址開始瀏覽',
   'contextPanel.browser.inspectUnavailable': '無法從瀏覽器面板檢查此頁面。',

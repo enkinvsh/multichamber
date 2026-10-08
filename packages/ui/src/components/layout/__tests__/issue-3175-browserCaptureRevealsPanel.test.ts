@@ -11,6 +11,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { setMultichamberLockdownForTests } from '@/lib/multichamber/lockdown';
 import { useUIStore } from '@/stores/useUIStore';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -19,6 +20,7 @@ const browserPaneSource = readFileSync(join(__dirname, '..', '..', 'browser', 'B
 const DIRECTORY = '/path/to/repository';
 
 beforeEach(() => {
+  setMultichamberLockdownForTests(false);
   useUIStore.setState({ contextPanelByDirectory: {}, contextRailOrder: [] });
 });
 

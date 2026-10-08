@@ -36,6 +36,8 @@ import { ContextPanelContent } from './ContextSidebarTab';
 import { BrowserPane } from '@/components/browser/BrowserPane';
 import { browserUrlLabel } from '@/lib/browser/url';
 import { registerBrowserOpener } from '@/lib/browser/controlClient';
+import { useMultichamberLockdown } from '@/lib/multichamber/lockdown';
+import { withoutMultichamberLockedSurfaces } from '@/lib/multichamber/panels';
 import { getRuntimeBearerTokenSync, getRuntimeExtraHeadersSync } from '@/lib/runtime-auth';
 import { getRuntimeApiBaseUrl, getRuntimeKey } from '@/lib/runtime-switch';
 import { getActiveRelayDescriptor } from '@/lib/relay/runtime-tunnel';
@@ -489,6 +491,7 @@ export const ContextPanel: React.FC = () => {
   const setContextPanelWidth = useUIStore((state) => state.setContextPanelWidth);
   const setActiveContextPanelTab = useUIStore((state) => state.setActiveContextPanelTab);
   const openContextBrowser = useUIStore((state) => state.openContextBrowser);
+  const multichamberLockdown = useMultichamberLockdown();
 
   // Lets an agent's browser.open create the tab it needs when none is open yet.
   // Registered from the panel because opening a tab is panel state, not
@@ -496,9 +499,9 @@ export const ContextPanel: React.FC = () => {
   // panel so Electron gives the webview a composited surface; capturePage()
   // cannot capture the zero-width webview inside a closed panel.
   React.useEffect(() => {
-    if (!effectiveDirectory) return;
+    if (!effectiveDirectory || multichamberLockdown) return;
     return registerBrowserOpener((url) => openContextBrowser(effectiveDirectory, url));
-  }, [effectiveDirectory, openContextBrowser]);
+  }, [effectiveDirectory, multichamberLockdown, openContextBrowser]);
   const reorderContextPanelTabs = useUIStore((state) => state.reorderContextPanelTabs);
   const setSelectedFilePath = useFilesViewTabsStore((state) => state.setSelectedPath);
   const contextEditorTreeVisible = useUIStore((state) => state.contextEditorTreeVisible);
@@ -1031,8 +1034,8 @@ export const ContextPanel: React.FC = () => {
             : null;
 
   const browserTabs = React.useMemo(
-    () => tabs.filter((tab) => tab.mode === 'browser'),
-    [tabs],
+    () => withoutMultichamberLockedSurfaces(tabs.filter((tab) => tab.mode === 'browser'), multichamberLockdown),
+    [multichamberLockdown, tabs],
   );
   const diffTabs = React.useMemo(
     () => tabs.filter((tab) => tab.mode === 'diff'),

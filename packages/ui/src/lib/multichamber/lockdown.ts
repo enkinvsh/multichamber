@@ -84,6 +84,19 @@ export const useMultichamberLockdown = (): boolean => {
   return lockdown;
 };
 
+/**
+ * Lockdown as the server reported it: false until the policy has loaded. For
+ * irreversible cleanup (closing persisted tabs) that must not act on the
+ * fail-closed guess an unlocked server would later contradict.
+ */
+export const useMultichamberLockdownConfirmed = (): boolean =>
+  useMultichamberPolicyStore((state) => state.status === 'loaded' && state.policy.lockdown);
+
+/** Test seam: pins a loaded policy so store tests run against a known lockdown. */
+export const setMultichamberLockdownForTests = (lockdown: boolean): void => {
+  useMultichamberPolicyStore.setState({ policy: { lockdown, fsRoot: null }, status: 'loaded' });
+};
+
 /** Non-reactive read for stores and callbacks. */
 export const isMultichamberLockdown = (): boolean =>
   resolveLockdown(useMultichamberPolicyStore.getState());

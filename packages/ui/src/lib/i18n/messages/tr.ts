@@ -1289,6 +1289,7 @@ export const dict = {
   'contextPanel.browser.history.label': 'Son adresler',
   'contextPanel.browser.history.forget': 'Geçmişten kaldır',
   'contextPanel.browser.newTab': 'Yeni tarayıcı sekmesi',
+  'contextPanel.browser.toast.workspacePreviewUnavailable': 'Çalışma alanınızdaki geliştirme sunucularının önizlemesi henüz kullanılamıyor.',
   'contextPanel.browser.empty': 'Web tarayıcısı',
   'contextPanel.browser.emptyHint': 'Web\'de gezinmeye başlamak için yukarıya bir adres gir',
   'contextPanel.browser.inspectUnavailable': 'Bu sayfa tarayıcı panelinden incelenemiyor.',

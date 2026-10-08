@@ -16,6 +16,7 @@ import { isWindowsArm64 } from '@/lib/platform';
 import { isVSCodeRuntime } from '@/lib/desktop';
 import { isMultichamberLockdown } from '@/lib/multichamber/lockdown';
 import { isMultichamberHiddenContextMode } from '@/lib/multichamber/panels';
+import { openMultichamberPreview } from '@/lib/multichamber/browser';
 import { isContextPanelMode, type ContextPanelMode } from '@/lib/surfaces/modes';
 import { getRuntimeKey, isTransientRuntimeKey } from '@/lib/runtime-switch';
 import { sanitizeWorkStatusSectionOrder, type WorkStatusSectionId } from '@/components/chat/work-status/sections';
@@ -1446,7 +1447,7 @@ export const useUIStore = create<UIStore>()(
         // panel closed when the requested mode is already active and visible.
         openContextSurface: (directory, mode) => {
           const normalizedDirectory = normalizeDirectoryPath((directory || '').trim());
-          if (!normalizedDirectory) {
+          if (!normalizedDirectory || isMultichamberHiddenContextMode(mode)) {
             return;
           }
 
@@ -1592,6 +1593,10 @@ export const useUIStore = create<UIStore>()(
         openContextPreview: (directory, url) => {
           const normalizedDirectory = normalizeDirectoryPath((directory || '').trim());
           const normalizedUrl = (url || '').trim();
+          if (isMultichamberLockdown()) {
+            openMultichamberPreview(normalizedUrl);
+            return;
+          }
           if (!normalizedDirectory || !normalizedUrl || isVSCodeRuntime()) {
             return;
           }

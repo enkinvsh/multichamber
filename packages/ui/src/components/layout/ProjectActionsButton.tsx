@@ -8,6 +8,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from '@/components/ui';
+import { useMultichamberLockdown } from '@/lib/multichamber/lockdown';
 import { Icon } from "@/components/icon/Icon";
 import type { IconName } from '@/components/icon/icons';
 import { cn } from '@/lib/utils';
@@ -131,6 +132,10 @@ export const ProjectActionsButton = ({
   const setSettingsDialogOpen = useUIStore((state) => state.setSettingsDialogOpen);
   const setSettingsProjectsSelectedId = useUIStore((state) => state.setSettingsProjectsSelectedId);
   const openContextPreview = useUIStore((state) => state.openContextPreview);
+  // Lockdown has no Browser panel, so a run only starts its command: its output
+  // is not watched for URLs, nothing auto-opens, and discovery reveals the
+  // terminal instead of waiting for a preview.
+  const multichamberLockdown = useMultichamberLockdown();
 
   const ensureDirectory = useTerminalStore((state) => state.ensureDirectory);
   const reconcileServerSessions = useTerminalStore((state) => state.reconcileServerSessions);
@@ -741,7 +746,7 @@ export const ProjectActionsButton = ({
     let requestedExecution: { directory: string; tabId: string; id: string } | null = null;
 
     try {
-      const discovered = action.id === AUTO_DISCOVER_ACTION_ID
+      const resolvedAction = action.id === AUTO_DISCOVER_ACTION_ID
         ? await (async (): Promise<OpenChamberProjectAction> => {
           const [actionsState, scripts] = await Promise.all([
             getProjectActionsState({ id: stableProjectRef?.id ?? '', path: normalizedDirectory }),
@@ -761,9 +766,10 @@ export const ProjectActionsButton = ({
           };
         })()
         : action;
+      const discovered = multichamberLockdown ? { ...resolvedAction, autoOpenUrl: false } : resolvedAction;
 
       const hasCustomOpenUrl = discovered.autoOpenUrl === true && (discovered.openUrl || '').trim().length > 0;
-      const revealTerminal = !hasCustomOpenUrl && action.id !== AUTO_DISCOVER_ACTION_ID;
+      const revealTerminal = multichamberLockdown || (!hasCustomOpenUrl && action.id !== AUTO_DISCOVER_ACTION_ID);
       const launchContextHostDirectory = contextHostDirectoryRef.current || normalizedDirectory;
       const { executionDirectory, key, tabId } = await getOrCreateActionTab(discovered);
       const normalizedCommand = normalizeProjectActionCommand(discovered.command);
@@ -843,9 +849,9 @@ export const ProjectActionsButton = ({
         actionId: discovered.id,
         executionId: adoptedExecutionId,
         lastSeenChunkId: null,
-        openedUrl: Boolean(desktopForwardUrl) || Boolean(manualOpenUrl) || hasCustomOpenUrl,
+        openedUrl: multichamberLockdown || Boolean(desktopForwardUrl) || Boolean(manualOpenUrl) || hasCustomOpenUrl,
         tail: '',
-        openInPreview: discovered.id === AUTO_DISCOVER_ACTION_ID,
+        openInPreview: discovered.id === AUTO_DISCOVER_ACTION_ID && !multichamberLockdown,
         announced: [],
         offering: false,
       };
@@ -902,7 +908,7 @@ export const ProjectActionsButton = ({
 
       window.clearTimeout(previewWaitTimeoutByRunKeyRef.current[executionStateKey]);
       delete previewWaitTimeoutByRunKeyRef.current[executionStateKey];
-      if (discovered.id === AUTO_DISCOVER_ACTION_ID && !manualOpenUrl) {
+      if (discovered.id === AUTO_DISCOVER_ACTION_ID && !manualOpenUrl && !multichamberLockdown) {
         setWaitingForPreviewByExecution((current) => ({ ...current, [executionStateKey]: true }));
         previewWaitTimeoutByRunKeyRef.current[executionStateKey] = window.setTimeout(() => {
           delete previewWaitTimeoutByRunKeyRef.current[executionStateKey];
@@ -971,6 +977,7 @@ export const ProjectActionsButton = ({
     allowMobile,
     isMobile,
     isDesktopShellApp,
+    multichamberLockdown,
     normalizedDirectory,
     terminalLoginShell,
     terminalShell,
@@ -1106,7 +1113,7 @@ export const ProjectActionsButton = ({
   const selectedRunning = projectActionRuns[selectedRunKey];
   const isStoppingSelected = selectedRunning?.status === 'stopping';
   const isWaitingForSelectedPreview = selectedRunning?.status === 'waiting-for-preview';
-  const showSelectedPreviewButton = Boolean(selectedRunning && selectedRunPreviewUrl);
+  const showSelectedPreviewButton = !multichamberLockdown && Boolean(selectedRunning && selectedRunPreviewUrl);
   const handleOpenSelectedPreview = () => {
     if (!selectedRunning || !selectedRunPreviewUrl) {
       return;

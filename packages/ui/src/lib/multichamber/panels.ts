@@ -1,11 +1,12 @@
 /**
  * Context panel surfaces a locked-down slot does not offer: Linear and pull
- * requests need integrations the hosted container does not connect.
+ * requests need integrations the hosted container does not connect; the
+ * browser cannot reach the slot's dev servers (see `./browser`).
  */
 import type { ContextPanelMode } from '@/lib/surfaces/modes';
 import { isMultichamberLockdown } from './lockdown';
 
-const LOCKED_CONTEXT_MODES: ReadonlySet<ContextPanelMode> = new Set<ContextPanelMode>(['linear', 'pr']);
+const LOCKED_CONTEXT_MODES: ReadonlySet<ContextPanelMode> = new Set<ContextPanelMode>(['linear', 'pr', 'browser']);
 
 /** Drops locked surfaces (rail, chooser, digit shortcuts) when `lockdown` is on. */
 export const withoutMultichamberLockedSurfaces = <T extends { mode: ContextPanelMode }>(
