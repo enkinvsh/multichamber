@@ -35,7 +35,8 @@ docker run -d --name multichamber -p 3000:3000 \
 |---|---|
 | `MULTICHAMBER_LLM_BASE_URL` | Gateway base URL used by every provider in `opencode.json` (required) |
 | `MULTICHAMBER_LLM_KEY` | Gateway key (required) |
-| `OPENCHAMBER_UI_PASSWORD` | Password for the web UI |
+| `OPENCHAMBER_UI_PASSWORD` | Password for the web UI; without it the server refuses to listen on the network |
+| `OPENCHAMBER_ALLOW_UNAUTHENTICATED_LAN` | `true` to run without the UI password when an authenticating proxy sits in front |
 | `MULTICHAMBER_FS_ROOT` | Folder the UI may use, default `$HOME` |
 | `OPENCODE_CONFIG` | Replace the bundled OpenCode config with your own file |
 

@@ -49,8 +49,10 @@ jobs:
         run: |
           docker run -d --name mc -p 3000:3000 \
             -e MULTICHAMBER_LLM_BASE_URL=http://127.0.0.1:9/v1 -e MULTICHAMBER_LLM_KEY=ci \
+            -e OPENCHAMBER_ALLOW_UNAUTHENTICATED_LAN=true \
             multichamber:ci
           for _ in $(seq 1 90); do
+            test "$(docker inspect -f '{{.State.Running}}' mc)" = true
             curl -fsS -o /dev/null http://127.0.0.1:3000/ && break
             sleep 2
           done
