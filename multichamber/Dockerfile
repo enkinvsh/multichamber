@@ -5,7 +5,7 @@
 # BUN_VERSION and OPENCODE_VERSION follow the upstream Dockerfile; the sync job
 # (multichamber/sync-upstream.sh) rewrites them after every upstream merge.
 ARG BUN_VERSION=1.4.2
-ARG OPENCODE_VERSION=2.0.22
+ARG OPENCODE_VERSION=2.0.25
 
 FROM oven/bun:${BUN_VERSION} AS deps
 WORKDIR /app

@@ -341,7 +341,7 @@ export function getSettingsNavIcon(slug: SettingsPageSlug): IconName | null {
     case 'integrations':
       return 'plug';
     case 'extensions':
-      return 'apps';
+      return 'puzzle';
 
     case 'usage':
       return 'bar-chart-2';
