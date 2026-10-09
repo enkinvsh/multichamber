@@ -86,9 +86,18 @@ describe('readMultichamberBrandConfig', () => {
       assetsDir: null,
       themesDir: null,
       defaultThemes: { dark: null, light: null },
+      defaultLocale: null,
       links: { account: null, plans: null, topup: null, support: null, logout: null },
       budgetUrl: null,
     });
+  });
+
+  it('accepts a locale tag as the default language and rejects anything else', () => {
+    expect(readMultichamberBrandConfig({ MULTICHAMBER_DEFAULT_LOCALE: 'ru' }).config.defaultLocale).toBe('ru');
+    expect(readMultichamberBrandConfig({ MULTICHAMBER_DEFAULT_LOCALE: 'pt-BR' }).config.defaultLocale).toBe('pt-BR');
+    const { config, invalid } = readMultichamberBrandConfig({ MULTICHAMBER_DEFAULT_LOCALE: 'ru"><script>' });
+    expect(config.defaultLocale).toBeNull();
+    expect(invalid).toEqual(['MULTICHAMBER_DEFAULT_LOCALE']);
   });
 
   it('keeps valid values and reports invalid ones by variable name only', () => {

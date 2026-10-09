@@ -71,6 +71,9 @@ const isBrandName = (value) => value.length <= MAX_NAME_LENGTH && !CONTROL_CHARA
 /** @param {string} value */
 const isThemeId = (value) => THEME_ID_PATTERN.test(value);
 
+/** @param {string} value */
+const isLocaleTag = (value) => /^[a-z]{2}(-[A-Z]{2})?$/.test(value);
+
 const isAnyText = () => true;
 
 /**
@@ -86,6 +89,7 @@ const isAnyText = () => true;
  *   assetsDir: string | null,
  *   themesDir: string | null,
  *   defaultThemes: { dark: string | null, light: string | null },
+ *   defaultLocale: string | null,
  *   links: MultichamberBrandLinks,
  *   budgetUrl: string | null,
  * }} MultichamberBrandConfig
@@ -121,6 +125,7 @@ export const readMultichamberBrandConfig = (env = process.env) => {
         dark: read('MULTICHAMBER_DEFAULT_THEME_DARK', isThemeId),
         light: read('MULTICHAMBER_DEFAULT_THEME_LIGHT', isThemeId),
       },
+      defaultLocale: read('MULTICHAMBER_DEFAULT_LOCALE', isLocaleTag),
       links: {
         account: read('MULTICHAMBER_ACCOUNT_URL', isSafeLink),
         plans: read('MULTICHAMBER_PLANS_URL', isSafeLink),
@@ -141,6 +146,7 @@ const isBrandConfigured = (config) => [
   config.themesDir,
   config.defaultThemes.dark,
   config.defaultThemes.light,
+  config.defaultLocale,
   ...Object.values(config.links),
   config.budgetUrl,
 ].some((value) => value !== null);
@@ -270,6 +276,7 @@ export const createMultichamberBrand = ({
         name: config.name,
         logoUrl: assetUrl('logo.svg'),
         defaultThemes: config.defaultThemes,
+        defaultLocale: config.defaultLocale,
         themes: pageThemes.themes,
         links: config.links,
         budget: config.budgetUrl !== null,

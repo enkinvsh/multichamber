@@ -124,5 +124,31 @@ export function detectInitialLocale(): Locale {
     return normalizeLocale(hostLanguage);
   }
 
+  const brandLocale = readBrandDefaultLocale();
+  if (brandLocale) {
+    return normalizeLocale(brandLocale);
+  }
+
   return DEFAULT_LOCALE;
+}
+
+/**
+ * multichamber: the operator's default language (MULTICHAMBER_DEFAULT_LOCALE), inlined by the web
+ * server into index.html with the rest of the white-label config. Read directly here so the i18n
+ * runtime does not depend on the brand module and its theme imports.
+ */
+function readBrandDefaultLocale(): string | undefined {
+  try {
+    const text = globalThis.document?.getElementById('multichamber-brand')?.textContent;
+    if (!text) {
+      return undefined;
+    }
+    const value: unknown = JSON.parse(text);
+    if (typeof value !== 'object' || value === null || !('defaultLocale' in value)) {
+      return undefined;
+    }
+    return typeof value.defaultLocale === 'string' ? value.defaultLocale : undefined;
+  } catch {
+    return undefined;
+  }
 }
