@@ -5,6 +5,7 @@ import { usePwaDetection } from '@/hooks/usePwaDetection';
 import { useI18n } from '@/lib/i18n';
 import { getDeferredSafeStorage, getSafeSessionStorage } from '@/stores/utils/safeStorage';
 import { shouldShowPwaInstallToast } from '@/components/update/openCodeUpdateDedup';
+import { useMultichamberLockdown } from '@/lib/multichamber/lockdown';
 
 type InstallPromptOutcome = 'accepted' | 'dismissed';
 
@@ -18,6 +19,8 @@ const INSTALL_TOAST_DISMISSED_KEY = 'pwa-install-toast-dismissed';
 
 export const usePwaInstallPrompt = () => {
   const { browserTab } = usePwaDetection();
+  // A hosted container is opened from the operator's site; its own install toast would name the stock app.
+  const multichamberLockdown = useMultichamberLockdown();
   const { t } = useI18n();
   const tRef = React.useRef(t);
 
@@ -26,7 +29,7 @@ export const usePwaInstallPrompt = () => {
   }, [t]);
 
   React.useEffect(() => {
-    if (typeof window === 'undefined' || !isWebRuntime() || !browserTab) {
+    if (typeof window === 'undefined' || !isWebRuntime() || !browserTab || multichamberLockdown) {
       return;
     }
 
@@ -111,5 +114,5 @@ export const usePwaInstallPrompt = () => {
       window.removeEventListener('beforeinstallprompt', onBeforeInstallPrompt as EventListener);
       window.removeEventListener('appinstalled', onAppInstalled);
     };
-  }, [browserTab]);
+  }, [browserTab, multichamberLockdown]);
 };
