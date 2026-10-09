@@ -50,6 +50,8 @@ Session sharing (`POST|DELETE /api/session/:id/share`, also `/api/api/...`) is r
 
 ### Projects (`project-guard.js`)
 
+A fresh home starts with one project, `~/projects`: the container entrypoint (`multichamber/entrypoint.sh`) writes `settings.json` with `lastDirectory` when the file does not exist, and the stock settings migration turns it into the first project. Without a project the UI never reloads providers (`loadProviders` skips an unknown directory), so a browser cache from an older image would keep stale model capabilities.
+
 Mounted in the `parsed` stage after the fs root guard, lockdown only. Root = `MULTICHAMBER_FS_ROOT`, or the home folder when unset. A project path must sit strictly below the root, and no segment below the root may start with `.` (`~/.omo`, `~/.config`, `~/.local/share` hold harness state). The check runs on the `~`-expanded path and again on its `realpath`, so a symlink into a hidden folder is refused too.
 
 Routes that add projects or move the active directory (all other `persistSettings` callers only edit existing project entries, such as `project-icon-routes.js`):

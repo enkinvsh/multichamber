@@ -17,6 +17,13 @@ export MULTICHAMBER_FS_ROOT
 # The chats root must exist before the UI scopes OpenCode to it, or every
 # directory-scoped OpenCode call for "chats" fails with 500.
 mkdir -p "$HOME/projects" "$HOME/.config/openchamber/chats" "$HOME/.local/share" "$HOME/.cache"
+
+# A fresh home opens on ~/projects. With no project the UI asks for a folder
+# first and never refreshes the model list it cached in the browser, so a model
+# can look as if it refused PDFs or images. OpenChamber makes the first project
+# from lastDirectory when the settings hold none.
+settings="$HOME/.config/openchamber/settings.json"
+[ -e "$settings" ] || printf '{"lastDirectory":"%s"}\n' "$HOME/projects" > "$settings"
 cd "$HOME/projects"
 
 exec bun /opt/multichamber/packages/web/bin/cli.js serve --foreground --port "${MULTICHAMBER_PORT:-3000}"
