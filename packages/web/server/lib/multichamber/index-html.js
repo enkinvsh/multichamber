@@ -113,6 +113,7 @@ const applyLoadingMark = (html, { name, logoUrl }) => {
   const url = escapeHtml(logoUrl);
   const label = name ? `role="img" aria-label="${escapeHtml(name)}"` : 'aria-hidden="true"';
   // A mask paints the single-colour logo in the splash foreground; an <img> would ignore currentColor.
+  // The React splash (OpenChamberLogo, variant 'splash') uses the same box, so the logo keeps its size.
   const mark = `<div id="multichamber-loading-logo" ${label} style="width: 240px; max-width: 70vw; height: 72px; background-color: var(--splash-stroke); -webkit-mask: url('${url}') center / contain no-repeat; mask: url('${url}') center / contain no-repeat;"></div>`;
   return replaceWith(html, /<svg\b[^>]*\baria-label="OpenChamber loading icon"[^>]*>[\s\S]*?<\/svg>/, () => mark);
 };

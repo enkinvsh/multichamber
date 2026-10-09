@@ -4,6 +4,9 @@ import { useI18n } from '@/lib/i18n';
 import { MultichamberBrandLogo } from '@/components/multichamber/MultichamberBrandLogo';
 import { getMultichamberAppName, getMultichamberBrand } from '@/lib/multichamber/brand';
 
+/** Box of the server-rendered loading mark (web server `multichamber/index-html.js`, applyLoadingMark). */
+const BRAND_SPLASH_LOGO_BOX = { width: 240, height: 72 };
+
 const LEFT_FACE_CELL_OPACITIES = [
   0.2, 0.45, 0.15, 0.55,
   0.35, 0.1, 0.5, 0.25,
@@ -162,17 +165,20 @@ export const OpenChamberLogo: React.FC<OpenChamberLogoProps> = ({
 
   const logoFillColor = strokeColor;
 
-  // multichamber: a branded server swaps the cube for the brand logo.
+  // multichamber: a branded server swaps the cube for the brand logo. A wordmark
+  // fits a square box by its width, so on the splash it takes the box of the
+  // server-rendered loading mark instead and keeps its size when React takes over.
   const brandLogoUrl = getMultichamberBrand()?.logoUrl;
   if (brandLogoUrl) {
+    const splash = variant === 'splash';
     return (
       <MultichamberBrandLogo
         src={brandLogoUrl}
         label={getMultichamberAppName()}
-        width={width}
-        height={height}
+        width={splash ? BRAND_SPLASH_LOGO_BOX.width : width}
+        height={splash ? BRAND_SPLASH_LOGO_BOX.height : height}
         color={logoFillColor}
-        className={className}
+        className={splash ? `max-w-[70vw] ${className}` : className}
       />
     );
   }
