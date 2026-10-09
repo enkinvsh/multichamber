@@ -1697,6 +1697,18 @@ function ascendingId(prefix: string): string {
   return `${prefix}_${hex}${rand}`
 }
 
+// Sessions whose prompt request is still on the wire, counted because one
+// session can have several. Until that request lands OpenCode has not seen the
+// prompt and reports the session idle — for as long as the upload takes, which
+// with attachments on a slow link is tens of seconds. During that window the
+// busy status set by `optimisticSend` is newer than any server status snapshot.
+const sendsInFlight = new Map<string, number>()
+
+/** Whether a prompt for the session is still being sent to OpenCode. */
+export function hasSendInFlight(sessionId: string): boolean {
+  return sendsInFlight.has(sessionId)
+}
+
 /**
  * Wraps an async send operation with optimistic user-message insertion.
  * Uses useSync()'s optimistic infrastructure — message + parts are inserted
@@ -1820,6 +1832,7 @@ export async function optimisticSend(input: {
     },
   })
 
+  sendsInFlight.set(input.sessionId, (sendsInFlight.get(input.sessionId) ?? 0) + 1)
   try {
     assertRuntimeUnchanged()
     await input.send(messageID)
@@ -1893,6 +1906,10 @@ export async function optimisticSend(input: {
       },
     })
     throw error
+  } finally {
+    const remaining = (sendsInFlight.get(input.sessionId) ?? 1) - 1
+    if (remaining > 0) sendsInFlight.set(input.sessionId, remaining)
+    else sendsInFlight.delete(input.sessionId)
   }
 }
 

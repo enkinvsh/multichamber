@@ -35,7 +35,7 @@ import { touchStreamingSession, updateChangedStreamingSessions, updateStreamingS
 import { countSyncPerformance } from "./performance-diagnostics"
 import { runBackgroundNetworkTask } from "@/lib/background-network"
 import { recordDirectoryRecoveryEvent } from "./directory-recovery-snapshots"
-import { setActionRefs } from "./session-actions"
+import { hasSendInFlight, setActionRefs } from "./session-actions"
 import { setSyncRefs, getAllSyncSessions } from "./sync-refs"
 import { useSessionUIStore } from "./session-ui-store"
 import { stripSessionDiffSnapshots } from "./sanitize"
@@ -701,7 +701,8 @@ type DirectorySessionStatusSnapshot = NonNullable<
 // - "authoritative": treat the snapshot as ground truth — absent/idle candidates
 //   are lowered to idle. Used by reconnect/escalated resyncs, a deliberate edge
 //   where the live server snapshot is the source of truth (mirrors the bootstrap
-//   snapshot). The snapshot wins over any derived message state here.
+//   snapshot). The snapshot wins over any derived message state here, but not
+//   over a send whose prompt has not reached the server yet.
 type StatusSnapshotMode = "monotonic" | "authoritative"
 
 export function applySessionStatusSnapshot(
@@ -733,6 +734,9 @@ export function applySessionStatusSnapshot(
       // Snapshot reports this candidate idle (absent, or explicit idle).
       // Monotonic never lowers; authoritative trusts the snapshot as truth.
       if (mode === "monotonic") continue
+      // Except while the session's prompt is still uploading: OpenCode has not
+      // received it yet, so this idle predates the send's busy status.
+      if (hasSendInFlight(sessionId)) continue
 
       const existing = current[sessionId]
       // Keep the successful snapshot distinguishable from "status has never
@@ -846,6 +850,9 @@ export function needsSnapshotAfterStatusPoll(
 ): boolean {
   const incoming = toSessionStatus(snapshotEntry)
   if (incoming && incoming.type !== "idle") return false
+  // Idle is expected while the session's prompt is still uploading; it is not
+  // a missed idle event.
+  if (hasSendInFlight(sessionId)) return false
   const currentStatus = state.session_status?.[sessionId]
   return Boolean(currentStatus && currentStatus.type !== "idle")
 }

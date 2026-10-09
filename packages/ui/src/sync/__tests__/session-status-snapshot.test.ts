@@ -2,8 +2,11 @@ import { describe, expect, test } from "bun:test"
 import { create, type StoreApi } from "zustand"
 import type { SessionStatus } from "@opencode-ai/sdk/v2/client"
 
+import { opencodeClient } from "@/lib/opencode/client"
+import { useConfigStore } from "@/stores/useConfigStore"
 import { INITIAL_STATE, type State } from "../types"
-import type { DirectoryStore } from "../child-store"
+import { ChildStoreManager, type DirectoryStore } from "../child-store"
+import { optimisticSend, setActionRefs, setOptimisticRefs } from "../session-actions"
 import {
   applySessionStatusSnapshot,
   needsSnapshotAfterStatusPoll,
@@ -121,6 +124,68 @@ describe("needsSnapshotAfterStatusPoll", () => {
   test("does NOT escalate when the store already considers the session idle", () => {
     const store = createDirectoryStore({ session_status: {} })
     expect(needsSnapshotAfterStatusPoll(store.getState(), "ses_a", undefined)).toBe(false)
+  })
+})
+
+describe("a send whose prompt is still uploading", () => {
+  const DIRECTORY = "/repo"
+  const EMPTY_SNAPSHOT: StatusSnapshot = {}
+
+  // Starts a real optimistic send whose request stays on the wire until the
+  // returned `land` or `fail` is called.
+  async function startSend(sessionId: string) {
+    useConfigStore.setState({ isConnected: true })
+    const childStores = new ChildStoreManager()
+    const store = childStores.ensureChild(DIRECTORY, { bootstrap: false })
+    setActionRefs(opencodeClient.getSdkClient(), childStores, () => DIRECTORY)
+    setOptimisticRefs(() => {}, () => {})
+
+    let land = () => {}
+    let fail: (error: Error) => void = () => {}
+    const sending = optimisticSend({
+      sessionId,
+      directory: DIRECTORY,
+      content: "two attachments",
+      providerID: "provider",
+      modelID: "model",
+      send: () => new Promise<void>((resolve, reject) => {
+        land = resolve
+        fail = reject
+      }),
+    })
+    // optimisticSend checks the connection before marking the session busy.
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    return { store, sending, land: () => land(), fail: (error: Error) => fail(error) }
+  }
+
+  test("keeps the send's busy status against an idle snapshot until the prompt lands", async () => {
+    const { store, sending, land } = await startSend("ses_upload")
+    expect(store.getState().session_status.ses_upload).toEqual(BUSY)
+
+    expect(needsSnapshotAfterStatusPoll(store.getState(), "ses_upload", undefined)).toBe(false)
+    expect(applySessionStatusSnapshot(store, EMPTY_SNAPSHOT, ["ses_upload"], "authoritative")).toBe(false)
+    applySessionStatusSnapshot(store, { ses_upload: { type: "idle" } }, ["ses_upload"], "authoritative")
+    expect(store.getState().session_status.ses_upload).toEqual(BUSY)
+
+    land()
+    await sending
+
+    // Once OpenCode has the prompt, its snapshot is the truth again.
+    expect(needsSnapshotAfterStatusPoll(store.getState(), "ses_upload", undefined)).toBe(true)
+    applySessionStatusSnapshot(store, EMPTY_SNAPSHOT, ["ses_upload"], "authoritative")
+    expect(store.getState().session_status.ses_upload).toEqual({ type: "idle" })
+  })
+
+  test("stops protecting the session once the send is rejected", async () => {
+    const { store, sending, fail } = await startSend("ses_rejected")
+    fail(new Error("payload too large"))
+    await expect(sending).rejects.toThrow("payload too large")
+    expect(store.getState().session_status.ses_rejected).toEqual({ type: "idle" })
+
+    store.setState({ session_status: { ses_rejected: BUSY } })
+    expect(needsSnapshotAfterStatusPoll(store.getState(), "ses_rejected", undefined)).toBe(true)
+    applySessionStatusSnapshot(store, EMPTY_SNAPSHOT, ["ses_rejected"], "authoritative")
+    expect(store.getState().session_status.ses_rejected).toEqual({ type: "idle" })
   })
 })
 
