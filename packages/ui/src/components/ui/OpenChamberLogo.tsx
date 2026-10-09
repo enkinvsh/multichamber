@@ -1,6 +1,8 @@
 import React, { useMemo } from 'react';
 import { useOptionalThemeSystem } from '@/contexts/useThemeSystem';
 import { useI18n } from '@/lib/i18n';
+import { MultichamberBrandLogo } from '@/components/multichamber/MultichamberBrandLogo';
+import { getMultichamberAppName, getMultichamberBrand } from '@/lib/multichamber/brand';
 
 const LEFT_FACE_CELL_OPACITIES = [
   0.2, 0.45, 0.15, 0.55,
@@ -160,6 +162,20 @@ export const OpenChamberLogo: React.FC<OpenChamberLogoProps> = ({
 
   const logoFillColor = strokeColor;
 
+  // multichamber: a branded server swaps the cube for the brand logo.
+  const brandLogoUrl = getMultichamberBrand()?.logoUrl;
+  if (brandLogoUrl) {
+    return (
+      <MultichamberBrandLogo
+        src={brandLogoUrl}
+        label={getMultichamberAppName()}
+        width={width}
+        height={height}
+        color={logoFillColor}
+        className={className}
+      />
+    );
+  }
 
 
   // Isometric cube geometry (mathematically correct)

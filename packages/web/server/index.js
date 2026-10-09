@@ -40,6 +40,7 @@ import { detectSayTtsCapability } from './lib/tts/capability-runtime.js';
 import { createTerminalRuntime } from './lib/terminal/runtime.js';
 import { createDictationRuntime } from './lib/dictation/runtime.js';
 import { createMultichamberDevServerFilter, installMultichamber } from './lib/multichamber/install.js';
+import { createMultichamberBrand } from './lib/multichamber/brand.js';
 import {
   createGlobalUiEventBroadcaster,
   createGlobalMessageStreamHub,
@@ -303,6 +304,11 @@ const themeRuntime = createThemeRuntime({
 const readCustomThemesFromDisk = (...args) => themeRuntime.readCustomThemesFromDisk(...args);
 const saveImportedTheme = (...args) => themeRuntime.saveImportedTheme(...args);
 const deleteImportedTheme = (...args) => themeRuntime.deleteImportedTheme(...args);
+// multichamber: optional operator brand from MULTICHAMBER_* env; null keeps the server stock.
+const multichamberBrand = createMultichamberBrand({
+  readUserThemes: () => themeRuntime.readCustomThemesFromDisk(),
+  maxThemeJsonBytes: MAX_THEME_JSON_BYTES,
+});
 
 let notificationTemplateRuntime = null;
 let agentToolRuntime = null;
@@ -400,6 +406,7 @@ const settingsRuntime = createSettingsRuntime({
   normalizeManagedRemoteTunnelPresetTokens,
   syncManagedRemoteTunnelConfigWithPresets,
   upsertManagedRemoteTunnelToken,
+  defaultThemeIds: multichamberBrand?.config.defaultThemes ?? null,
 });
 
 const readSettingsFromDiskMigrated = (...args) => settingsRuntime.readSettingsFromDiskMigrated(...args);
@@ -1087,6 +1094,7 @@ const staticRoutesRuntime = createStaticRoutesRuntime({
   readSettingsFromDiskMigrated,
   normalizePwaAppName,
   normalizePwaOrientation,
+  multichamberBrand,
 });
 const remoteClientAuthRuntime = createRemoteClientAuthRuntime({
   fsPromises,

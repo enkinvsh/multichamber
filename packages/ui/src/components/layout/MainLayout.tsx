@@ -1,5 +1,6 @@
 import React from 'react';
 import { Header } from './Header';
+import { MultichamberBudgetBanner } from '@/components/multichamber/MultichamberBudgetBanner';
 import { Sidebar } from './Sidebar';
 import { SidebarTopBar } from './SidebarTopBar';
 import { TitlebarLeftControls } from './TitlebarLeftControls';
@@ -140,6 +141,7 @@ export const MainLayout: React.FC = () => {
                     </Sidebar>
                     <div className="relative flex flex-1 min-w-0 flex-col overflow-hidden bg-background" data-page-scroll-lock="true">
                         <Header />
+                        <MultichamberBudgetBanner />
                         <div className="relative flex flex-1 min-h-0 overflow-hidden bg-background" data-page-scroll-lock="true">
                             <div className="relative flex flex-1 min-w-0 flex-col overflow-hidden border-t border-border bg-background" data-page-scroll-lock="true">
                                 <div className="flex flex-1 min-h-0 overflow-hidden" data-page-scroll-lock="true">

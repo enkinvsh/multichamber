@@ -20,6 +20,7 @@ import { MobileFilesSurface } from './MobileFilesSurface';
 import { useEdgeSwipe } from './useEdgeSwipe';
 import { isVimEditorEventTarget } from '@/lib/editorFocus';
 import { useMultichamberLockdown } from '@/lib/multichamber/lockdown';
+import { MultichamberDrawerAccountRow } from '@/components/multichamber/MultichamberDrawerAccountRow';
 
 const DRAWER_ROOT_ID = 'mobile-surface-root';
 const ENTER_DELAY_MS = 16;
@@ -238,6 +239,7 @@ export const MobileWorkspaceDrawer: React.FC<{
           <Icon name="close" className="size-5" />
         </button>
       </div>
+      <MultichamberDrawerAccountRow />
       <div className="min-h-0 flex-1 overflow-hidden">
         {/* Panes stay MOUNTED once visited (hidden when inactive/closed), so
             reopening the drawer lands exactly where the user left off — an

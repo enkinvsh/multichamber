@@ -6,7 +6,7 @@ import path from 'path';
 import { createProjectIdFromPath, projectConfigFileStemOf } from '../projects/project-id.js';
 import { createSettingsRuntime } from './settings-runtime.js';
 
-const createRuntime = async ({ mergePersistedSettings = (_current, changes) => changes } = {}) => {
+const createRuntime = async ({ mergePersistedSettings = (_current, changes) => changes, defaultThemeIds } = {}) => {
   const tempRoot = await fsPromises.mkdtemp(path.join(os.tmpdir(), 'oc-settings-runtime-'));
   const settingsFilePath = path.join(tempRoot, 'settings.json');
   const runtime = createSettingsRuntime({
@@ -26,6 +26,7 @@ const createRuntime = async ({ mergePersistedSettings = (_current, changes) => c
     normalizeManagedRemoteTunnelPresetTokens: (value) => value,
     syncManagedRemoteTunnelConfigWithPresets: async () => {},
     upsertManagedRemoteTunnelToken: async () => {},
+    defaultThemeIds,
   });
 
   return {
@@ -59,6 +60,35 @@ describe('settings runtime', () => {
       await expect(runtime.readSettingsFromDiskMigrated()).resolves.toMatchObject({
         lightThemeId: 'openchamber-light',
         darkThemeId: 'openchamber-dark',
+      });
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it('seeds operator default themes, per variant, when a new install has no theme preferences', async () => {
+    const { runtime, cleanup } = await createRuntime({ defaultThemeIds: { light: null, dark: 'brand-dark' } });
+    try {
+      await expect(runtime.readSettingsFromDiskMigrated()).resolves.toMatchObject({
+        lightThemeId: 'openchamber-light',
+        darkThemeId: 'brand-dark',
+      });
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it('keeps stored theme preferences over operator default themes', async () => {
+    const { runtime, settingsFilePath, cleanup } = await createRuntime({ defaultThemeIds: { light: 'brand-light', dark: 'brand-dark' } });
+    try {
+      await fsPromises.writeFile(settingsFilePath, JSON.stringify({
+        lightThemeId: 'flexoki-light',
+        darkThemeId: 'flexoki-dark',
+      }), 'utf8');
+
+      await expect(runtime.readSettingsFromDiskMigrated()).resolves.toMatchObject({
+        lightThemeId: 'flexoki-light',
+        darkThemeId: 'flexoki-dark',
       });
     } finally {
       await cleanup();

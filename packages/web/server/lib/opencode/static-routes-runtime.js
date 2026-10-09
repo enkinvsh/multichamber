@@ -13,6 +13,7 @@ export const createStaticRoutesRuntime = (dependencies) => {
     readSettingsFromDiskMigrated,
     normalizePwaAppName,
     normalizePwaOrientation,
+    multichamberBrand = null,
   } = dependencies;
 
   const resolveDistPath = () => {
@@ -28,6 +29,8 @@ export const createStaticRoutesRuntime = (dependencies) => {
 
     if (fs.existsSync(distPath)) {
       console.log(`Serving static files from ${distPath}`);
+      // multichamber: brand files and the branded index.html answer before express.static.
+      const sendBrandedIndexHtml = multichamberBrand ? multichamberBrand.installRoutes(app, { distPath }) : null;
       app.use(express.static(distPath, {
         setHeaders(res, filePath) {
           // Service workers should never be long-cached; iOS is especially sensitive.
@@ -45,9 +48,13 @@ export const createStaticRoutesRuntime = (dependencies) => {
         readSettingsFromDiskMigrated,
         normalizePwaAppName,
         normalizePwaOrientation,
+        multichamberBrand,
       });
 
-      app.get(/^(?!\/api|\/linear|.*\.(js|css|svg|png|jpg|jpeg|gif|ico|woff|woff2|ttf|eot|map)).*$/, (_req, res) => {
+      app.get(/^(?!\/api|\/linear|.*\.(js|css|svg|png|jpg|jpeg|gif|ico|woff|woff2|ttf|eot|map)).*$/, (req, res) => {
+        if (sendBrandedIndexHtml) {
+          return sendBrandedIndexHtml(req, res);
+        }
         res.sendFile(path.join(distPath, 'index.html'));
       });
       return;

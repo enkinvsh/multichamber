@@ -2,6 +2,7 @@ import type { ThemeMode } from '@/types/theme';
 import type { DesktopSettings } from '@/lib/desktop';
 import { DEFAULT_DARK_THEME_ID, DEFAULT_LIGHT_THEME_ID, getThemeById } from '@/lib/theme/themes';
 import { isTransientRuntimeKey } from '@/lib/runtime-switch';
+import { getMultichamberDefaultThemeId } from '@/lib/multichamber/brand';
 
 type StoredThemePreferences = {
   themeMode: ThemeMode;
@@ -117,8 +118,10 @@ export const resolveThemePreferencesFromStorageEvent = (
 // cosmetic last-writer-wins hints.
 const readLegacyThemePreferences = (): StoredThemePreferences => {
   let themeMode: ThemeMode = 'system';
-  let lightThemeId: string = DEFAULT_LIGHT_THEME_ID;
-  let darkThemeId: string = DEFAULT_DARK_THEME_ID;
+  // multichamber: a branded server may name its own defaults for users who
+  // have not picked a theme yet.
+  let lightThemeId: string = getMultichamberDefaultThemeId('light') ?? DEFAULT_LIGHT_THEME_ID;
+  let darkThemeId: string = getMultichamberDefaultThemeId('dark') ?? DEFAULT_DARK_THEME_ID;
 
   const legacyMode = readLocalStorageItem('themeMode');
   const legacyUseSystem = readLocalStorageItem('useSystemTheme');

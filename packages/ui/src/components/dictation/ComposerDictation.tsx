@@ -124,7 +124,8 @@ export const ComposerDictation: React.FC<ComposerDictationProps> = ({
     const { t } = useI18n();
     const { currentTheme } = useThemeSystem();
     const dictationPreference = useConfigStore((state) => state.dictationEnabled);
-    const dictationEnabled = dictationPreference && !useMultichamberLockdown();
+    const multichamberLockdown = useMultichamberLockdown();
+    const dictationEnabled = dictationPreference && !multichamberLockdown;
     const shortcutOverrides = useUIStore((state) => state.shortcutOverrides);
     const dictationShortcut = formatShortcutForDisplay(getEffectiveShortcutCombo('toggle_dictation', shortcutOverrides));
     // The dictation server (WebSocket + STT worker) lives in the OpenChamber

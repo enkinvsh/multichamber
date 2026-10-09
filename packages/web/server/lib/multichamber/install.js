@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { readMultichamberBrandConfig } from './brand.js';
+import { registerMultichamberBudgetRoute } from './budget.js';
 import { createDevServerOwnershipFilter } from './dev-server-ownership.js';
 import { createFsRootGuard } from './fs-root-guard.js';
 import { createLockdownGuard, createLockdownSettingsFilter, isLockdownEnabled } from './lockdown-guard.js';
@@ -33,9 +35,9 @@ const registerMultichamberPolicyRoute = (app, { env = process.env } = {}) => {
 };
 
 /**
- * Installs the MultiChamber guards and the policy route on the OpenChamber app.
- * `stage` `early` runs before every route; `parsed` runs after the body parsers
- * and before the fs routes and the OpenCode proxy.
+ * Installs the MultiChamber guards, the policy route and the budget route on
+ * the OpenChamber app. `stage` `early` runs before every route; `parsed` runs
+ * after the body parsers and before the fs routes and the OpenCode proxy.
  * @param {import('express').Express} app
  * @param {'early' | 'parsed'} stage
  * @param {{ env?: NodeJS.ProcessEnv }} [options]
@@ -54,6 +56,8 @@ export const installMultichamber = (app, stage, { env = process.env } = {}) => {
   if (fsGuard) app.use(fsGuard);
   const projectGuard = createLockdownProjectGuard({ enabled, root: env.MULTICHAMBER_FS_ROOT, dataHomeDir: env.XDG_DATA_HOME });
   if (projectGuard) app.use(projectGuard);
+  // After the UI auth guard: the budget belongs to the signed-in user.
+  registerMultichamberBudgetRoute(app, { budgetUrl: readMultichamberBrandConfig(env).config.budgetUrl });
 };
 
 /**

@@ -18,6 +18,7 @@ import { useDeviceInfo } from '@/lib/device';
 import { isDesktopLocalOriginActive, isDesktopShell, isVSCodeRuntime, isWebRuntime } from '@/lib/desktop';
 import { isCapacitorApp } from '@/lib/platform';
 import { useI18n } from '@/lib/i18n';
+import { getMultichamberBrandName } from '@/lib/multichamber/brand';
 import { subscribeRuntimeEndpointChanged } from '@/lib/runtime-switch';
 import type { OpenChamberSection } from './types';
 
@@ -100,9 +101,11 @@ export const OpenChamberPage: React.FC<OpenChamberPageProps> = ({ section }) => 
         tunnel: t('settings.page.tunnel.title'),
     }[section];
 
+    // multichamber: a branded server names its own app in the page copy.
+    const brandName = getMultichamberBrandName();
     const pageDescription = {
         general: t('settings.page.general.description'),
-        visual: t('settings.page.appearance.description'),
+        visual: brandName ? t('multichamber.settings.appearanceDescription', { name: brandName }) : t('settings.page.appearance.description'),
         chat: t('settings.page.chat.description'),
         sessions: t('settings.page.sessions.description'),
         shortcuts: t('settings.page.shortcuts.description'),

@@ -18,6 +18,7 @@ export const registerPwaManifestRoute = (app, dependencies) => {
     readSettingsFromDiskMigrated,
     normalizePwaAppName,
     normalizePwaOrientation,
+    multichamberBrand = null,
   } = dependencies;
 
   const recentPwaSessionsCache = new Map();
@@ -204,9 +205,12 @@ export const registerPwaManifestRoute = (app, dependencies) => {
       storedOrientation = 'system';
     }
 
+    // multichamber: operator brand (lib/multichamber/brand.js); a user-chosen name still wins.
+    const brand = multichamberBrand ? await multichamberBrand.resolveManifestBrand() : null;
+    const defaultAppName = brand?.name || DEFAULT_PWA_APP_NAME;
     const appName = hasQueryOverride
-      ? (queryOverrideName || DEFAULT_PWA_APP_NAME)
-      : (storedName || DEFAULT_PWA_APP_NAME);
+      ? (queryOverrideName || defaultAppName)
+      : (storedName || defaultAppName);
     const manifestOrientation = mapPwaOrientationToManifest(
       hasOrientationOverride ? queryOverrideOrientation : storedOrientation
     );
@@ -252,6 +256,6 @@ export const registerPwaManifestRoute = (app, dependencies) => {
 
     res.setHeader('Cache-Control', 'no-store, must-revalidate');
     res.type('application/manifest+json');
-    res.send(JSON.stringify(manifest));
+    res.send(JSON.stringify(brand ? brand.apply(manifest) : manifest));
   });
 };

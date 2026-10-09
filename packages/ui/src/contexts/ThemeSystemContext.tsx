@@ -20,6 +20,7 @@ import {
   DEFAULT_DARK_THEME_ID,
 } from '@/lib/theme/themes';
 import { withPrColors } from '@/lib/theme/themes/prColors';
+import { getMultichamberBrandThemes, getMultichamberDefaultTheme } from '@/lib/multichamber/brand';
 import { ThemeSystemContext, type ThemeContextValue } from './theme-system-context';
 import type { VSCodeThemePayload } from '@/lib/theme/vscode/adapter';
 import { runtimeFetch } from '@/lib/runtime-fetch';
@@ -62,7 +63,8 @@ const readEmbeddedCurrentTheme = (): Theme | null => {
 };
 
 const fallbackThemeForVariant = (variant: 'light' | 'dark'): Theme =>
-  getDefaultTheme(variant === 'dark');
+  // multichamber: a branded server's default theme stands in for the stock one.
+  getMultichamberDefaultTheme(variant) ?? getDefaultTheme(variant === 'dark');
 
 const useIsomorphicLayoutEffect = typeof window !== 'undefined' ? React.useLayoutEffect : React.useEffect;
 
@@ -204,6 +206,9 @@ export function ThemeSystemProvider({ children, defaultThemeId }: ThemeSystemPro
 
     // Custom themes first so they can override built-ins with the same id.
     customThemes.forEach(add);
+    // multichamber: themes a branded server inlined in the page. Listed like
+    // built-ins (customThemeIds stays the user's files), so never deletable.
+    getMultichamberBrandThemes().forEach(add);
     // Vite publishes valid built-in JSON edits through this development-only
     // runtime channel, avoiding a full page reload for theme work.
     developmentThemes.forEach(add);

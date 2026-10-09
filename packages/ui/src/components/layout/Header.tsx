@@ -39,6 +39,8 @@ import { UpdateDialog } from '@/components/ui/UpdateDialog';
 import { useDeviceInfo, useTabletStandalonePwaRuntime } from '@/lib/device';
 import { cn } from '@/lib/utils';
 import { useMultichamberLockdown } from '@/lib/multichamber/lockdown';
+import { getMultichamberAppName } from '@/lib/multichamber/brand';
+import { MultichamberHeaderControls } from '@/components/multichamber/MultichamberHeaderControls';
 import { formatShortcutForDisplay, getEffectiveShortcutCombo, type ShortcutActionId } from '@/lib/shortcuts';
 import { useKeybinds } from '@/hooks/useKeybind';
 import {
@@ -739,7 +741,7 @@ export const Header: React.FC = () => {
 
   const currentSessionTitle = React.useMemo(() => {
     if (!currentSessionId) {
-      return activeProjectLabel ?? 'OpenChamber';
+      return activeProjectLabel ?? getMultichamberAppName();
     }
     const trimmedTitle = currentSession?.title?.trim();
     return trimmedTitle && trimmedTitle.length > 0 ? trimmedTitle : 'Untitled Session';
@@ -1717,6 +1719,7 @@ export const Header: React.FC = () => {
             </Tooltip>
           ) : null}
 
+          <MultichamberHeaderControls />
           {desktopSidebarActions}
           <WindowsWindowControls visible={usesFramelessChrome && windowControlsSide === 'right'} position="right" />
         </div>

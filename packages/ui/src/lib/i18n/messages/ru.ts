@@ -1,8 +1,10 @@
 // Russian locale. Multichamber fork only: upstream declined Russian localization.
 // Base translations come from the closed upstream PRs #4123 and #2898.
 import type { I18nKey } from './en';
+import { multichamberI18n } from './multichamber.i18n';
 
 export const dict: Record<I18nKey, string> = {
+  ...multichamberI18n.ru,
   "sessions.aiRename.action": "Переименовать с помощью ИИ",
   "sessions.aiRename.generating": "Создание названия сессии...",
   "sessions.aiRename.checking": "Проверка завершённых ходов...",

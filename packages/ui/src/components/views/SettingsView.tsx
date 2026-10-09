@@ -25,6 +25,7 @@ import { CommandsPage } from '@/components/sections/commands/CommandsPage';
 import { McpSidebar } from '@/components/sections/mcp/McpSidebar';
 import { McpPage } from '@/components/sections/mcp/McpPage';
 import { useMultichamberLockdown } from '@/lib/multichamber/lockdown';
+import { getMultichamberBrandName } from '@/lib/multichamber/brand';
 import { PluginsSidebar, PluginsPage } from '@/components/sections/plugins';
 import { usePluginsStore } from '@/stores/usePluginsStore';
 import { SkillsSidebar } from '@/components/sections/skills/SkillsSidebar';
@@ -968,7 +969,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, forceMobile
                       groupIndex === 0 ? 'pt-1' : 'pt-4 sm:pt-3',
                     )}
                   >
-                    {t(`settings.view.nav.group.${group}`)}
+                    {/* multichamber: the app's own settings group carries the brand name. */}
+                    {(group === 'general' ? getMultichamberBrandName() : null) ?? t(`settings.view.nav.group.${group}`)}
                   </div>
                   {pages.map((page) => {
                     // On the mobile nav STAGE nothing is "current" — the user is

@@ -251,6 +251,7 @@ mock.module('@/stores/useUIStore', () => ({ useUIStore: fakeUseUIStore }));
 mock.module('@/hooks/useEffectiveDirectory', () => ({ useEffectiveDirectory: () => null }));
 mock.module('@/hooks/useRuntimeAPIs', () => ({ useRuntimeAPIs: () => ({ editor: undefined, runtime: { isVSCode: false } }) }));
 mock.module('@/lib/desktop', () => ({ isDesktopLocalOriginActive: () => false, isDesktopShell: () => false, isVSCodeRuntime: () => false }));
+mock.module('@/lib/multichamber/browser', () => ({ openExternalLinkInLockdown: (url: string, openExternal: (target: string) => void) => openExternal(url) }));
 mock.module('@/lib/runtimeSurface', () => ({ isMobileSurfaceRuntime: () => false }));
 mock.module('@/lib/outsideFileGrants', () => ({ ensureOutsideFileGrantForDesktop: async () => undefined }));
 mock.module('@/lib/path-utils', () => ({ getDirectoryForFilePath: () => '', isFilePathWithinDirectory: () => true, toAbsoluteFilePath: () => '' }));

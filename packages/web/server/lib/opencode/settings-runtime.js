@@ -58,6 +58,9 @@ export const createSettingsRuntime = (deps) => {
     normalizeManagedRemoteTunnelPresetTokens,
     syncManagedRemoteTunnelConfigWithPresets,
     upsertManagedRemoteTunnelToken,
+    // multichamber: operator theme ids ({ light, dark }, null fields allowed)
+    // seeded into installs that have no theme preference yet.
+    defaultThemeIds = null,
   } = deps;
 
   let persistSettingsLock = Promise.resolve();
@@ -828,8 +831,8 @@ export const createSettingsRuntime = (deps) => {
       return { settings, changed: false };
     }
 
-    const defaultLight = 'openchamber-light';
-    const defaultDark = 'openchamber-dark';
+    const defaultLight = defaultThemeIds?.light || 'openchamber-light';
+    const defaultDark = defaultThemeIds?.dark || 'openchamber-dark';
 
     let nextLightThemeId = hasLight ? settings.lightThemeId : undefined;
     let nextDarkThemeId = hasDark ? settings.darkThemeId : undefined;

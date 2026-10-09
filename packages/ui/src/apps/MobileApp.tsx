@@ -80,6 +80,7 @@ import {
   useIpadSidebarResize,
 } from './ipadSidebarResize';
 import { useMultichamberLockdown } from '@/lib/multichamber/lockdown';
+import { MultichamberBudgetBanner } from '@/components/multichamber/MultichamberBudgetBanner';
 
 const MOBILE_SETTINGS_PAGES = [
   'general',
@@ -477,6 +478,7 @@ const MobileShell: React.FC<{ onActiveConnectionDeleted: () => void }> = ({ onAc
             onOpenWorkspace={() => setWorkspaceOpen(true)}
             compactTitle={isTabletLayout}
           />
+          <MultichamberBudgetBanner />
           <main ref={chatMainRef} className="relative min-h-0 flex-1 overflow-hidden" data-page-scroll-lock="true">
             <div className="h-full w-full">
               <ErrorBoundary>

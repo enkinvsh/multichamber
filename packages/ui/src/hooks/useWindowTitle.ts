@@ -4,8 +4,11 @@ import { isDesktopLocalOriginActive, isDesktopShell } from '@/lib/desktop';
 import { desktopHostsGet, getDesktopHostApiUrl, locationMatchesHost, redactSensitiveUrl } from '@/lib/desktopHosts';
 import { setDesktopWindowTitle } from '@/lib/desktopNative';
 import { getRuntimeApiBaseUrl } from '@/lib/runtime-switch';
+import { getMultichamberAppName } from '@/lib/multichamber/brand';
 
-const APP_TITLE = 'OpenChamber';
+// multichamber: the brand config is inline in the page, so it is readable
+// before any module runs.
+const APP_TITLE = getMultichamberAppName();
 
 const formatProjectLabel = (label: string): string => label.trim();
 
