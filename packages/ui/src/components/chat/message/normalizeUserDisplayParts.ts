@@ -109,6 +109,15 @@ const buildGitHubAttachmentPart = (text: string): Part | null => {
     return null;
 };
 
+// oh-my-openagent marks the user turns it sends on its own (background task
+// done, todo continuation) with this comment. They are prompts for the agent,
+// not words of the user, and arrive without the synthetic flag.
+const OMO_INTERNAL_MARKER = '<!-- OMO_INTERNAL_INITIATOR -->';
+
+const isAgentHarnessText = (part: Part): boolean => {
+    return part.type === 'text' && part.text.includes(OMO_INTERNAL_MARKER);
+};
+
 const shouldKeepSyntheticUserText = (text: string, planModeEnabled: boolean): boolean => {
     const trimmed = text.trim();
     if (planModeEnabled && trimmed.startsWith('User has requested to enter plan mode')) return true;
@@ -154,6 +163,7 @@ export const normalizeUserDisplayParts = (parts: Part[], options?: { planModeEna
     return parts
         .filter((part) => {
             if (part.type === 'file' && redundantFileUrls.has(part.url)) return false;
+            if (isAgentHarnessText(part)) return false;
             const synthetic = (part as { synthetic?: boolean }).synthetic === true;
             if (!synthetic) return true;
             if (part.type !== 'text') return false;
