@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { LOCALES } from '../runtime';
 import { multichamberI18n } from './multichamber.i18n';
+import { dict as ruDict } from './ru';
 
 const placeholders = (value: string): string[] => [...value.matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort();
 
@@ -24,6 +25,14 @@ describe('multichamber translations', () => {
     for (const value of Object.values(multichamberI18n.ru)) {
       expect(/[\u2013\u2014]|--/.test(value)).toBe(false);
       expect(value.toLowerCase()).not.toContain('среда');
+    }
+  });
+
+  test('Russian base locale ru.ts follows the owner copy rules', () => {
+    const sredaRegex = /(?<![а-яёА-ЯЁ])сред(?:а|ы|е|у|ой)(?![а-яёА-ЯЁ])/i;
+    for (const [key, value] of Object.entries(ruDict)) {
+      expect({ key, hasDash: /[\u2013\u2014]| -- /.test(value) }).toEqual({ key, hasDash: false });
+      expect({ key, hasSreda: sredaRegex.test(value) }).toEqual({ key, hasSreda: false });
     }
   });
 });
