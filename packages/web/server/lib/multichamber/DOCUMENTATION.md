@@ -32,7 +32,9 @@ This is a UX boundary, not a security boundary: the container (read-only rootfs,
 
 `lockdown-guard.js` turns OpenChamber into a managed product: users keep chatting, editing files and using git, but cannot change providers, keys, quotas, MCP, plugins, tunnels, updates or integrations. Set `MULTICHAMBER_LOCKDOWN=1` (the image does). Any other value: nothing is mounted.
 
-A blocked request gets `403 { error: 'This setting is managed by MultiChamber.', code: 'multichamber_locked' }`, even before login. GET status reads the UI makes at startup or while polling (`/api/guests`, `/api/linear/auth/status`, `/api/github/auth/status`, `/api/quota/providers`, tunnel/relay status, update-check, upgrade-status) stay open; the UI stops rendering the features instead.
+A blocked request gets `403 { error: 'This setting is managed by MultiChamber.', code: 'multichamber_locked' }`, even before login. GET status reads the UI makes at startup or while polling (`/api/guests`, `/api/linear/auth/status`, `/api/github/auth/status`, `/api/quota/providers`, tunnel/relay status) stay open; the UI stops rendering the features instead.
+
+The two update checks never leave the container: in lockdown `installMultichamber(app, 'early')` registers `GET /api/openchamber/update-check` and `GET /api/opencode/upgrade-status` ahead of the stock routes, and both answer `{ available: false }`. The stock handlers would ask `api.openchamber.dev` (with usage data), npm and GitHub; the operator updates by shipping a new image instead.
 
 `RULES` (prefix match on segments, `*` = one segment):
 

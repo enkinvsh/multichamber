@@ -35,6 +35,21 @@ const registerMultichamberPolicyRoute = (app, { env = process.env } = {}) => {
 };
 
 /**
+ * In lockdown the operator updates MultiChamber by shipping a new image, never from inside the
+ * container, so the update checks answer here: the server never asks api.openchamber.dev, npm or
+ * GitHub for a newer OpenChamber or OpenCode and never reports usage to them.
+ * @param {import('express').Express} app
+ */
+const registerLockdownUpdateRoutes = (app) => {
+  const noUpdate = (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ available: false });
+  };
+  app.get('/api/openchamber/update-check', noUpdate);
+  app.get('/api/opencode/upgrade-status', noUpdate);
+};
+
+/**
  * Installs the MultiChamber guards, the policy route and the budget route on
  * the OpenChamber app. `stage` `early` runs before every route; `parsed` runs
  * after the body parsers and before the fs routes and the OpenCode proxy.
@@ -47,6 +62,7 @@ export const installMultichamber = (app, stage, { env = process.env } = {}) => {
   if (stage === 'early') {
     const guard = createLockdownGuard({ enabled });
     if (guard) app.use(guard);
+    if (enabled) registerLockdownUpdateRoutes(app);
     registerMultichamberPolicyRoute(app, { env });
     return;
   }
