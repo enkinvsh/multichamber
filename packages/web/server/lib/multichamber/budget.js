@@ -15,7 +15,8 @@ const FAILURE_LOG_INTERVAL_MS = 60_000;
 // Long enough to absorb a burst of tabs and focus events, short enough that a top-up shows within seconds.
 const SUCCESS_CACHE_MS = 3_000;
 
-const percentSchema = z.number().nullish().transform((value) => (value == null ? null : Math.min(100, Math.max(0, value))));
+const clampPercent = (value) => Math.min(100, Math.max(0, value));
+const percentSchema = z.number().nullish().transform((value) => (value == null ? null : clampPercent(value)));
 const resetsAtSchema = z.string().nullish().transform((value, context) => {
   if (value == null) return null;
   const timestamp = Date.parse(value);
@@ -33,6 +34,14 @@ const budgetPayloadSchema = z.object({
   resets_at: resetsAtSchema,
   pack_percent_used: percentSchema,
   has_topup: z.boolean().default(false),
+  // Поля gateway v2. zod 4 молча выбрасывает незнакомые ключи, поэтому без них
+  // браузер не видит отката и показывает остановку. Необязательны: старый gateway их не шлёт.
+  // nullish стоит снаружи transform: иначе пропущенный ключ превращается в `null`
+  // и ответ старому gateway меняется.
+  fallback_percent_used: z.number().transform(clampPercent).nullish(),
+  stopped: z.boolean().nullish(),
+  // Незнакомый пресет не должен ронять весь ответ в 502.
+  preset: z.enum(['economy', 'balance', 'maximum']).nullish().catch(null),
 });
 
 class BudgetUpstreamError extends Error {}

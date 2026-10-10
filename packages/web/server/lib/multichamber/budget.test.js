@@ -48,6 +48,42 @@ describe('budget route', () => {
     expect(calls).toEqual([{ url: 'https://budget.test/weekly?token=secret', accept: 'application/json' }]);
   });
 
+  it('passes the fallback, stop and preset fields of a v2 gateway through', async () => {
+    const fetchImpl = async () => jsonResponse({
+      state: 'exhausted',
+      weekly_percent_used: 100,
+      resets_at: '2026-10-14T18:43:00Z',
+      pack_percent_used: null,
+      has_topup: false,
+      fallback_percent_used: 40,
+      stopped: false,
+      preset: 'balance',
+    });
+
+    const response = await request(createApp({ fetchImpl })).get(MULTICHAMBER_BUDGET_ROUTE);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ state: 'exhausted', fallback_percent_used: 40, stopped: false, preset: 'balance' });
+  });
+
+  it('accepts an old gateway payload without the v2 fields', async () => {
+    const fetchImpl = async () => jsonResponse({ state: 'warn95', weekly_percent_used: 96, resets_at: null, pack_percent_used: null, has_topup: false });
+
+    const response = await request(createApp({ fetchImpl })).get(MULTICHAMBER_BUDGET_ROUTE);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ state: 'warn95', weekly_percent_used: 96, resets_at: null, pack_percent_used: null, has_topup: false });
+  });
+
+  it('keeps the payload when the preset is unknown', async () => {
+    const fetchImpl = async () => jsonResponse({ state: 'ok', weekly_percent_used: 10, resets_at: null, pack_percent_used: null, stopped: false, preset: 'turbo' });
+
+    const response = await request(createApp({ fetchImpl })).get(MULTICHAMBER_BUDGET_ROUTE);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ state: 'ok', stopped: false, preset: null });
+  });
+
   it('reuses a fresh answer for a few seconds only', async () => {
     let calls = 0;
     const fetchImpl = async () => {
