@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { readMultichamberBrandConfig } from './brand.js';
+import { registerMultichamberActivityRoute } from './activity.js';
 import { registerMultichamberBudgetRoute } from './budget.js';
 import { createDevServerOwnershipFilter } from './dev-server-ownership.js';
 import { createFsRootGuard } from './fs-root-guard.js';
@@ -64,6 +65,8 @@ export const installMultichamber = (app, stage, { env = process.env } = {}) => {
     if (guard) app.use(guard);
     if (enabled) registerLockdownUpdateRoutes(app);
     registerMultichamberPolicyRoute(app, { env });
+    // До проверки входа в UI: хост слота читает время ввода без сессии пользователя.
+    registerMultichamberActivityRoute(app, { enabled });
     return;
   }
   const settingsFilter = createLockdownSettingsFilter({ enabled });

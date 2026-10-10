@@ -2,7 +2,7 @@
 
 Everything MultiChamber adds to the server lives here. `install.js` is the entry point for the guards and API routes; `server/index.js` calls it twice:
 
-- `installMultichamber(app, 'early')` right after `app.use(compression(...))`, before `bootstrapRuntime.setupBaseRoutes`. Mounts the lockdown guard and `GET /api/multichamber/policy`. It has to precede `setupBaseRoutes` because `/api/system/*`, `/auth/passkey/*`, `/api/client-auth/*`, `/api/passkeys` and `/api/openchamber/update-install` are registered there, some before the UI auth gate.
+- `installMultichamber(app, 'early')` right after `app.use(compression(...))`, before `bootstrapRuntime.setupBaseRoutes`. Mounts the lockdown guard, `GET /api/multichamber/policy` and `/api/multichamber/activity`. It has to precede `setupBaseRoutes` because `/api/system/*`, `/auth/passkey/*`, `/api/client-auth/*`, `/api/passkeys` and `/api/openchamber/update-install` are registered there, some before the UI auth gate.
 - `installMultichamber(app, 'parsed')` right after `uiAuthController = bootstrapResult.uiAuthController`. The JSON body parsers (`core-routes.js` `registerCommonRequestMiddleware`) are installed inside `setupBaseRoutes`, and the fs, settings and projects routes (`featureRoutesRuntime`) and the OpenCode proxy (`startupPipelineRuntime`) come after this point. Mounts the settings key filter, the filesystem root guard, the project guard and `GET /api/multichamber/budget`.
 
 The white label (`brand.js`) plugs into the theme, settings and static-file runtimes, so `server/index.js` creates it directly; see [White label](#white-label).
@@ -12,6 +12,17 @@ The white label (`brand.js`) plugs into the theme, settings and static-file runt
 ## Policy endpoint
 
 `GET /api/multichamber/policy` returns `{ lockdown: boolean, fsRoot: string | null }` (`lockdown` is `MULTICHAMBER_LOCKDOWN === '1'`, `fsRoot` is the trimmed `MULTICHAMBER_FS_ROOT`). The UI reads it once (`packages/ui/src/lib/multichamber/lockdown.ts`); a `404` means a plain OpenChamber server and leaves everything unlocked.
+
+## User activity
+
+`activity.js` tells the host when the user last touched the UI, so the host can put an idle machine to sleep. An open tab alone keeps sending background traffic (WebSocket pings, push visibility, session and budget polling), so connections and bytes cannot tell an idle tab from a working one; only real input can.
+
+- `POST /api/multichamber/activity` stores `Date.now()` in memory and answers `204`.
+- `GET /api/multichamber/activity` answers `{ "last_input_at": "<ISO UTC>" | null }` with `Cache-Control: no-store`; `null` until the first report since the server started.
+- Only in lockdown. Otherwise both answer `404 { error: 'activity_not_enabled' }`, registered so they never fall through to the OpenCode proxy.
+- Registered in the `early` stage, before the UI auth gate: the slot host reads it without a user session.
+
+The UI side is `packages/ui/src/hooks/useMultichamberActivityBeacon.ts`, mounted once in `App.tsx`. Once the server reports lockdown it listens for `pointerdown`, `keydown`, `wheel` and `touchstart` on `window` (capture, passive) and posts at most once a minute; the first input posts at once. It has no timer, so a tab nobody touches sends nothing.
 
 ## Filesystem root guard
 
