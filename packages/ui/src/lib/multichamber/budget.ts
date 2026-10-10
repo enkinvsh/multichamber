@@ -28,7 +28,11 @@ const percentSchema = z
 
 const budgetStateSchema = z.enum(['ok', 'warn80', 'warn95', 'exhausted']);
 
-export type MultichamberBudgetState = z.infer<typeof budgetStateSchema>;
+type MultichamberBudgetState = z.infer<typeof budgetStateSchema>;
+
+const budgetPresetSchema = z.enum(['economy', 'balance', 'maximum']);
+
+export type MultichamberBudgetMode = Exclude<MultichamberBudgetState, 'exhausted'> | 'fallback' | 'stopped';
 
 export type MultichamberBudget = {
   state: MultichamberBudgetState;
@@ -36,6 +40,15 @@ export type MultichamberBudget = {
   percent: number | null;
   /** Epoch milliseconds of the next weekly reset. */
   resetsAt: number | null;
+  /** Доля израсходованных запросов к запасной модели, целое 0..100. */
+  fallbackPercent: number | null;
+  /** null у старого gateway: он не сообщает, отклоняются ли запросы. */
+  stopped: boolean | null;
+  /**
+   * Пресет моделей из кабинета. В интерфейсе не показан: на пробном периоде
+   * gateway работает на economy, а сюда приходит пресет, выбранный в кабинете.
+   */
+  preset: z.infer<typeof budgetPresetSchema> | null;
 };
 
 const budgetSchema = z
@@ -45,6 +58,11 @@ const budgetSchema = z
     pack_percent_used: percentSchema,
     // A broken date only drops the countdown, not the whole indicator.
     resets_at: z.iso.datetime({ offset: true }).nullish().catch(null),
+    // Поля gateway v2 необязательны: старый gateway их не присылает.
+    fallback_percent_used: percentSchema,
+    stopped: z.boolean().nullish(),
+    // Незнакомый пресет нового gateway не должен прятать индикатор.
+    preset: budgetPresetSchema.nullish().catch(null),
   })
   .transform((payload): MultichamberBudget => {
     const percent = payload.weekly_percent_used ?? payload.pack_percent_used;
@@ -52,8 +70,24 @@ const budgetSchema = z
       state: payload.state,
       percent: percent === null ? null : Math.floor(percent),
       resetsAt: payload.resets_at ? Date.parse(payload.resets_at) : null,
+      fallbackPercent: payload.fallback_percent_used === null ? null : Math.floor(payload.fallback_percent_used),
+      stopped: payload.stopped ?? null,
+      preset: payload.preset ?? null,
     };
   });
+
+/**
+ * Режим индикатора. `exhausted` значит лишь, что рублёвый бюджет кончился, а
+ * отклоняет ли gateway запросы, знает только `stopped`, поэтому он важнее `state`.
+ * Старый gateway `stopped` не присылает, и `exhausted` у него значит остановку.
+ */
+export const getMultichamberBudgetMode = (
+  budget: Pick<MultichamberBudget, 'state' | 'stopped'>,
+): MultichamberBudgetMode => {
+  if (budget.stopped === true) return 'stopped';
+  if (budget.state !== 'exhausted') return budget.state;
+  return budget.stopped === false ? 'fallback' : 'stopped';
+};
 
 type BudgetStore = {
   budget: MultichamberBudget | null;

@@ -2,15 +2,45 @@ import React from 'react';
 import { Icon } from '@/components/icon/Icon';
 import { Button } from '@/components/ui/button';
 import { useI18n } from '@/lib/i18n';
+import { getCurrentIntlLocale } from '@/lib/i18n/intl';
 import { getMultichamberBrand } from '@/lib/multichamber/brand';
-import { useMultichamberBudget } from '@/lib/multichamber/budget';
+import {
+  type MultichamberBudget,
+  type MultichamberBudgetMode,
+  formatBudgetResetDuration,
+  getMultichamberBudgetMode,
+  useMultichamberBudget,
+} from '@/lib/multichamber/budget';
 import { cn } from '@/lib/utils';
+
+type Translate = ReturnType<typeof useI18n>['t'];
+type WarningMode = Exclude<MultichamberBudgetMode, 'ok' | 'stopped'>;
 
 const DISMISSED_STORAGE_KEY = 'multichamber.budgetBanner.dismissed';
 
 const WARNING_TONE = {
   warn80: 'border-[var(--status-warning-border)] bg-[var(--status-warning-background)] text-[var(--status-warning-text)]',
   warn95: 'border-[var(--status-error-border)] bg-[var(--status-error-background)] text-[var(--status-error-text)]',
+  // Агенты продолжают работать на запасной модели, поэтому тон предупреждения, а не ошибки.
+  fallback: 'border-[var(--status-warning-border)] bg-[var(--status-warning-background)] text-[var(--status-warning-text)]',
+} satisfies Record<WarningMode, string>;
+
+const warningMessage = (mode: WarningMode, budget: MultichamberBudget, resetDuration: string | null, t: Translate): string => {
+  if (mode === 'warn80') return t('multichamber.budget.warn80');
+  if (mode === 'warn95') return t('multichamber.budget.warn95');
+  return budget.fallbackPercent !== null && resetDuration
+    ? t('multichamber.budget.fallback', { percent: budget.fallbackPercent, duration: resetDuration })
+    : t('multichamber.budget.fallbackPlain');
+};
+
+const stoppedMessage = (budget: MultichamberBudget, resetDuration: string | null, t: Translate): string => {
+  // Старый gateway не присылает stopped, и у него остаётся прежний текст.
+  if (budget.stopped !== true) return t('multichamber.budget.exhausted');
+  // resets_at приходит только с подпиской; без него запросы остановил кончившийся пакет.
+  if (budget.resetsAt === null) return t('multichamber.budget.stoppedPack');
+  return resetDuration
+    ? t('multichamber.budget.stoppedUntil', { duration: resetDuration })
+    : t('multichamber.budget.exhausted');
 };
 
 const readDismissedBanner = (): string | null => {
@@ -41,7 +71,11 @@ const BannerIcon: React.FC = () => (
 const NOTICE_TEXT_CLASS = 'flex min-w-0 flex-auto items-start gap-2';
 const NOTICE_ACTIONS_CLASS = 'flex shrink-0 flex-wrap items-center gap-2 pl-6';
 
-const ExhaustedPanel: React.FC<{ topup: string | null; plans: string | null }> = ({ topup, plans }) => {
+const ExhaustedPanel: React.FC<{ message: string; topup: string | null; plans: string | null }> = ({
+  message,
+  topup,
+  plans,
+}) => {
   const { t } = useI18n();
   return (
     <div
@@ -50,7 +84,7 @@ const ExhaustedPanel: React.FC<{ topup: string | null; plans: string | null }> =
     >
       <div className={NOTICE_TEXT_CLASS}>
         <BannerIcon />
-        <p className="min-w-0 typography-ui-label font-medium">{t('multichamber.budget.exhausted')}</p>
+        <p className="min-w-0 typography-ui-label font-medium">{message}</p>
       </div>
       {topup || plans ? (
         <div className={NOTICE_ACTIONS_CLASS}>
@@ -71,21 +105,32 @@ const ExhaustedPanel: React.FC<{ topup: string | null; plans: string | null }> =
 };
 
 /**
- * Budget notices under the header. The 80% and 95% warnings can be dismissed
- * for the browser session (per state and week); the exhausted panel stays.
+ * Уведомления о бюджете под шапкой. Предупреждения о 80%, 95% и о запасной
+ * модели скрываются до конца сессии браузера, отдельно для режима и периода;
+ * панель остановки остаётся.
  */
 export const MultichamberBudgetBanner: React.FC = () => {
   const { t } = useI18n();
   const budget = useMultichamberBudget();
   const [dismissedBanner, setDismissedBanner] = React.useState(readDismissedBanner);
-  if (!budget || budget.state === 'ok') return null;
+  if (!budget) return null;
+  const mode = getMultichamberBudgetMode(budget);
+  if (mode === 'ok') return null;
 
   const links = getMultichamberBrand()?.links ?? null;
-  if (budget.state === 'exhausted') {
-    return <ExhaustedPanel topup={links?.topup ?? null} plans={links?.plans ?? null} />;
+  const resetDuration =
+    budget.resetsAt === null ? null : formatBudgetResetDuration(budget.resetsAt, Date.now(), getCurrentIntlLocale());
+  if (mode === 'stopped') {
+    return (
+      <ExhaustedPanel
+        message={stoppedMessage(budget, resetDuration, t)}
+        topup={links?.topup ?? null}
+        plans={links?.plans ?? null}
+      />
+    );
   }
 
-  const bannerKey = `${budget.state}:${budget.resetsAt ?? ''}`;
+  const bannerKey = `${mode}:${budget.resetsAt ?? ''}`;
   if (dismissedBanner === bannerKey) return null;
 
   const dismiss = () => {
@@ -97,14 +142,12 @@ export const MultichamberBudgetBanner: React.FC = () => {
   return (
     <div
       role="status"
-      className={cn('flex shrink-0 items-start gap-2 border-b px-3 py-1.5', WARNING_TONE[budget.state])}
+      className={cn('flex shrink-0 items-start gap-2 border-b px-3 py-1.5', WARNING_TONE[mode])}
     >
       <div className="flex min-h-6 min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
         <div className={NOTICE_TEXT_CLASS}>
           <BannerIcon />
-          <p className="min-w-0 typography-ui-label">
-            {budget.state === 'warn80' ? t('multichamber.budget.warn80') : t('multichamber.budget.warn95')}
-          </p>
+          <p className="min-w-0 typography-ui-label">{warningMessage(mode, budget, resetDuration, t)}</p>
         </div>
         {topup ? (
           <div className={NOTICE_ACTIONS_CLASS}>

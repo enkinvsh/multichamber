@@ -1,10 +1,12 @@
 import { describe, expect, test } from 'bun:test';
 
-import { formatBudgetResetDuration, parseMultichamberBudget } from './budget';
+import { formatBudgetResetDuration, getMultichamberBudgetMode, parseMultichamberBudget } from './budget';
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
+
+const OLD_GATEWAY_FIELDS = { fallbackPercent: null, stopped: null, preset: null };
 
 describe('parseMultichamberBudget', () => {
   test('shows the weekly percent as a whole number', () => {
@@ -19,6 +21,7 @@ describe('parseMultichamberBudget', () => {
       state: 'warn80',
       percent: 81,
       resetsAt: Date.parse('2026-10-11T12:00:00Z'),
+      ...OLD_GATEWAY_FIELDS,
     });
   });
 
@@ -30,7 +33,12 @@ describe('parseMultichamberBudget', () => {
       pack_percent_used: 140,
       has_topup: false,
     });
-    expect(parseMultichamberBudget(body)).toEqual({ state: 'exhausted', percent: 100, resetsAt: null });
+    expect(parseMultichamberBudget(body)).toEqual({
+      state: 'exhausted',
+      percent: 100,
+      resetsAt: null,
+      ...OLD_GATEWAY_FIELDS,
+    });
   });
 
   test('keeps the indicator without a percent or a valid reset time', () => {
@@ -38,12 +46,67 @@ describe('parseMultichamberBudget', () => {
       state: 'ok',
       percent: null,
       resetsAt: null,
+      ...OLD_GATEWAY_FIELDS,
+    });
+  });
+
+  test('reads the fallback share, the stop flag and the preset', () => {
+    const body = JSON.stringify({
+      state: 'exhausted',
+      weekly_percent_used: 100,
+      resets_at: '2026-11-01T00:00:00+03:00',
+      pack_percent_used: null,
+      has_topup: false,
+      fallback_percent_used: 12.5,
+      stopped: false,
+      preset: 'balance',
+    });
+    expect(parseMultichamberBudget(body)).toEqual({
+      state: 'exhausted',
+      percent: 100,
+      resetsAt: Date.parse('2026-11-01T00:00:00+03:00'),
+      fallbackPercent: 12,
+      stopped: false,
+      preset: 'balance',
+    });
+  });
+
+  test('drops an unknown preset but keeps the indicator', () => {
+    const body = JSON.stringify({ state: 'ok', fallback_percent_used: null, stopped: false, preset: 'turbo' });
+    expect(parseMultichamberBudget(body)).toEqual({
+      state: 'ok',
+      percent: null,
+      resetsAt: null,
+      fallbackPercent: null,
+      stopped: false,
+      preset: null,
     });
   });
 
   test('rejects an unknown state and a body that is not JSON', () => {
     expect(() => parseMultichamberBudget(JSON.stringify({ state: 'maybe' }))).toThrow();
     expect(() => parseMultichamberBudget('<html>Bad gateway</html>')).toThrow();
+  });
+});
+
+describe('getMultichamberBudgetMode', () => {
+  test('keeps the warning states while the budget lasts', () => {
+    expect(getMultichamberBudgetMode({ state: 'ok', stopped: false })).toBe('ok');
+    expect(getMultichamberBudgetMode({ state: 'warn80', stopped: null })).toBe('warn80');
+    expect(getMultichamberBudgetMode({ state: 'warn95', stopped: false })).toBe('warn95');
+  });
+
+  test('an exhausted budget runs on the fallback model until the gateway stops requests', () => {
+    expect(getMultichamberBudgetMode({ state: 'exhausted', stopped: false })).toBe('fallback');
+    expect(getMultichamberBudgetMode({ state: 'exhausted', stopped: true })).toBe('stopped');
+  });
+
+  test('an older gateway without the stop flag still means a stop', () => {
+    expect(getMultichamberBudgetMode({ state: 'exhausted', stopped: null })).toBe('stopped');
+  });
+
+  test('the stop flag wins over a warning state', () => {
+    expect(getMultichamberBudgetMode({ state: 'warn95', stopped: true })).toBe('stopped');
   });
 });
 
