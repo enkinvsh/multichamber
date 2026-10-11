@@ -41,6 +41,7 @@ import { createTerminalRuntime } from './lib/terminal/runtime.js';
 import { createDictationRuntime } from './lib/dictation/runtime.js';
 import { createMultichamberDevServerFilter, installMultichamber, readMultichamberPolicy } from './lib/multichamber/install.js';
 import { createMultichamberBrand } from './lib/multichamber/brand.js';
+import { createHostGuard } from './lib/multichamber/host-guard.js';
 import { isLockdownEnabled } from './lib/multichamber/lockdown-guard.js';
 import {
   createGlobalUiEventBroadcaster,
@@ -1724,6 +1725,11 @@ async function main(options = {}) {
   ]);
   const isLocalDevClientOrigin = (origin) => /^https?:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin);
   app.set('trust proxy', true);
+  // Первым, до CORS, входа и парсеров тела: запрос с чужим Host (DNS rebinding)
+  // или межсайтовая запись не должны дойти ни до одного обработчика.
+  // null, когда MULTICHAMBER_ALLOWED_HOSTS не задан.
+  const hostGuard = createHostGuard();
+  if (hostGuard) app.use(hostGuard.middleware);
   // Keep self-hosted instances out of search engines. The app shell is served
   // publicly (it loads before prompting for the UI password), so without this
   // even a password-protected instance gets crawled and indexed. Applies to
@@ -1764,6 +1770,8 @@ async function main(options = {}) {
   installMultichamber(app, 'early');
   expressApp = app;
   server = http.createServer(app);
+  // До всех runtime с server.on('upgrade'): отсекает WebSocket с чужим Host или Origin.
+  if (hostGuard) hostGuard.installOnServer(server);
   let realtimeProxyRuntime = { stop: () => {} };
 
   // The relay service is constructed further below (it depends on the tunnel

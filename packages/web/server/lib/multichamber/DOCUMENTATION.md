@@ -7,7 +7,26 @@ Everything MultiChamber adds to the server lives here. `install.js` is the entry
 
 The white label (`brand.js`) plugs into the theme, settings and static-file runtimes, so `server/index.js` creates it directly; see [White label](#white-label).
 
+The host guard (`host-guard.js`) is created directly in `server/index.js` as well, because it must run before everything else; see [Host guard](#host-guard).
+
 1.x has no enterprise mode, so there is no `enterprise-mode.js` and no `policy.json`.
+
+## Host guard
+
+`host-guard.js` protects the server against DNS rebinding and cross-site requests. In zeny the agent drives a Chromium inside the same container, and port 3000 has no UI login on the LAN (`OPENCHAMBER_ALLOW_UNAUTHENTICATED_LAN=true`), so any page the agent opens could rebind its own domain to `127.0.0.1` or simply POST / open a WebSocket to `localhost:3000`. Chromium Local Network Access is not relied on.
+
+Enabled only when `MULTICHAMBER_ALLOWED_HOSTS` is set: comma-separated hostnames, no ports, case-insensitive (zeny sets `app.ai.meybz.asia`). Parsed once at startup. Unset or blank: nothing is installed and the server behaves exactly as stock.
+
+Wiring in `server/index.js`: `hostGuard.middleware` is the first `app.use` (right after `app.set('trust proxy', true)`, before `X-Robots-Tag`, CORS, compression, the lockdown guard, UI auth, body parsers and static files). `hostGuard.installOnServer(server)` runs right after `http.createServer(app)` and wraps `server.emit` so a rejected `upgrade` never reaches any `server.on('upgrade')` listener (terminal, dictation, event stream, realtime proxy, dev tunnel, and any added later). Node calls every `upgrade` listener, so a rejecting listener alone would not stop the others. The stock `isRequestOriginAllowed` checks in those handlers still run after it.
+
+Rules:
+
+1. Host (every request and upgrade). `Host`, or `:authority` when missing; port, IPv6 brackets and one trailing dot stripped; lowercased. Allowed: an IPv4/IPv6 literal (DNS rebinding cannot produce one), `localhost`, `*.localhost`, or an exact allowlist entry. Otherwise `421 Misdirected Request`, `text/plain` body `Host not allowed`, no CORS headers. Upgrades get a raw `HTTP/1.1 421 Misdirected Request` and the socket is destroyed.
+2. Cross-site (POST, PUT, PATCH, DELETE and every upgrade). `Sec-Fetch-Site: cross-site` → `403 Cross-site request blocked`. An `Origin` header must be same-origin (`URL.host` equals the already-checked `Host` header) or an `https:` origin whose hostname is in the allowlist; `Origin: null` or anything else → 403. No `Origin` and no `Sec-Fetch-Site` → allowed (the OpenCode plugin, curl, the slot heartbeat, orchestrator health checks). GET/HEAD/OPTIONS skip this step: CORS already keeps a foreign page from reading the response.
+
+Each rejection is logged with `console.warn` at most once a minute per (reason, host).
+
+Legit zeny callers that pass: the master Caddy (`Host: app.ai.meybz.asia`, Caddy keeps the client's Host by default; browser `Origin: https://app.ai.meybz.asia`), orchestrator `GET http://10.77.x.y:3000/health`, the heartbeat `GET http://127.0.0.1:3000/api/multichamber/activity`, the OpenCode plugin POSTing to `localhost` without `Origin`, and the agent's Chromium on `http://localhost:3000` (same-origin).
 
 ## Policy endpoint
 
