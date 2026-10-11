@@ -1,12 +1,17 @@
 import { describe, expect, test } from 'bun:test';
 
-import { formatBudgetResetDuration, getMultichamberBudgetMode, parseMultichamberBudget } from './budget';
+import {
+  formatBudgetResetDuration,
+  getMultichamberBudgetMode,
+  getMultichamberBudgetResetKeys,
+  parseMultichamberBudget,
+} from './budget';
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 
-const OLD_GATEWAY_FIELDS = { fallbackPercent: null, stopped: null, preset: null };
+const OLD_GATEWAY_FIELDS = { fallbackPercent: null, stopped: null, preset: null, renews: null, byok: null };
 
 describe('parseMultichamberBudget', () => {
   test('shows the weekly percent as a whole number', () => {
@@ -68,6 +73,8 @@ describe('parseMultichamberBudget', () => {
       fallbackPercent: 12,
       stopped: false,
       preset: 'balance',
+      renews: null,
+      byok: null,
     });
   });
 
@@ -80,7 +87,14 @@ describe('parseMultichamberBudget', () => {
       fallbackPercent: null,
       stopped: false,
       preset: null,
+      renews: null,
+      byok: null,
     });
+  });
+
+  test('reads the renewal and own-key flags', () => {
+    const body = JSON.stringify({ state: 'warn80', stopped: false, renews: false, byok: true });
+    expect(parseMultichamberBudget(body)).toMatchObject({ renews: false, byok: true });
   });
 
   test('rejects an unknown state and a body that is not JSON', () => {
@@ -107,6 +121,32 @@ describe('getMultichamberBudgetMode', () => {
 
   test('the stop flag wins over a warning state', () => {
     expect(getMultichamberBudgetMode({ state: 'warn95', stopped: true })).toBe('stopped');
+  });
+
+  test('an own-key tariff has no budget to show', () => {
+    expect(getMultichamberBudgetMode({ state: 'ok', stopped: false, byok: true })).toBe('hidden');
+    expect(getMultichamberBudgetMode({ state: 'exhausted', stopped: true, byok: true })).toBe('hidden');
+    expect(getMultichamberBudgetMode({ state: 'warn80', stopped: false, byok: false })).toBe('warn80');
+  });
+});
+
+describe('getMultichamberBudgetResetKeys', () => {
+  test('a subscription that does not renew says when the plan ends', () => {
+    expect(getMultichamberBudgetResetKeys({ renews: false })).toEqual({
+      resetsIn: 'multichamber.budget.endsIn',
+      fallback: 'multichamber.budget.fallbackEnds',
+      stopped: 'multichamber.budget.stoppedEnds',
+    });
+  });
+
+  test('a renewing subscription and an older gateway keep the refresh texts', () => {
+    const refresh = {
+      resetsIn: 'multichamber.budget.resetsIn',
+      fallback: 'multichamber.budget.fallback',
+      stopped: 'multichamber.budget.stoppedUntil',
+    };
+    expect(getMultichamberBudgetResetKeys({ renews: true })).toEqual(refresh);
+    expect(getMultichamberBudgetResetKeys({ renews: null })).toEqual(refresh);
   });
 });
 

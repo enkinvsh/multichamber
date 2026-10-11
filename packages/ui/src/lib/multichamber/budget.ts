@@ -11,7 +11,7 @@
 import React from 'react';
 import { z } from 'zod';
 import { create } from 'zustand';
-import { useI18n } from '@/lib/i18n';
+import { type I18nKey, useI18n } from '@/lib/i18n';
 import { getCurrentIntlLocale } from '@/lib/i18n/intl';
 import { runtimeFetch } from '@/lib/runtime-fetch';
 import { getMultichamberBrand } from './brand';
@@ -32,7 +32,7 @@ type MultichamberBudgetState = z.infer<typeof budgetStateSchema>;
 
 const budgetPresetSchema = z.enum(['economy', 'balance', 'maximum']);
 
-export type MultichamberBudgetMode = Exclude<MultichamberBudgetState, 'exhausted'> | 'fallback' | 'stopped';
+export type MultichamberBudgetMode = Exclude<MultichamberBudgetState, 'exhausted'> | 'fallback' | 'stopped' | 'hidden';
 
 export type MultichamberBudget = {
   state: MultichamberBudgetState;
@@ -49,6 +49,10 @@ export type MultichamberBudget = {
    * gateway работает на economy, а сюда приходит пресет, выбранный в кабинете.
    */
   preset: z.infer<typeof budgetPresetSchema> | null;
+  /** false: в `resetsAt` подписка кончается, новый период не начнётся. null у старого gateway. */
+  renews: boolean | null;
+  /** Тариф со своим ключом: бюджета нет вовсе. */
+  byok: boolean | null;
 };
 
 const budgetSchema = z
@@ -63,6 +67,8 @@ const budgetSchema = z
     stopped: z.boolean().nullish(),
     // Незнакомый пресет нового gateway не должен прятать индикатор.
     preset: budgetPresetSchema.nullish().catch(null),
+    renews: z.boolean().nullish(),
+    byok: z.boolean().nullish(),
   })
   .transform((payload): MultichamberBudget => {
     const percent = payload.weekly_percent_used ?? payload.pack_percent_used;
@@ -73,6 +79,8 @@ const budgetSchema = z
       fallbackPercent: payload.fallback_percent_used === null ? null : Math.floor(payload.fallback_percent_used),
       stopped: payload.stopped ?? null,
       preset: payload.preset ?? null,
+      renews: payload.renews ?? null,
+      byok: payload.byok ?? null,
     };
   });
 
@@ -80,14 +88,38 @@ const budgetSchema = z
  * Режим индикатора. `exhausted` значит лишь, что рублёвый бюджет кончился, а
  * отклоняет ли gateway запросы, знает только `stopped`, поэтому он важнее `state`.
  * Старый gateway `stopped` не присылает, и `exhausted` у него значит остановку.
+ * На тарифе со своим ключом бюджета нет, и пустая плашка только путает.
  */
 export const getMultichamberBudgetMode = (
-  budget: Pick<MultichamberBudget, 'state' | 'stopped'>,
+  budget: Pick<MultichamberBudget, 'state' | 'stopped'> & Partial<Pick<MultichamberBudget, 'byok'>>,
 ): MultichamberBudgetMode => {
+  if (budget.byok === true) return 'hidden';
   if (budget.stopped === true) return 'stopped';
   if (budget.state !== 'exhausted') return budget.state;
   return budget.stopped === false ? 'fallback' : 'stopped';
 };
+
+type MultichamberBudgetResetKeys = Record<'resetsIn' | 'fallback' | 'stopped', I18nKey>;
+
+/**
+ * Тексты о сроке. При `renews === false` после `resetsAt` бюджет не обновится:
+ * кончается оплаченная подписка, и пользователю надо продлить её в кабинете.
+ * Старый gateway `renews` не присылает, и у него остаются прежние тексты.
+ */
+export const getMultichamberBudgetResetKeys = (
+  budget: Pick<MultichamberBudget, 'renews'>,
+): MultichamberBudgetResetKeys =>
+  budget.renews === false
+    ? {
+        resetsIn: 'multichamber.budget.endsIn',
+        fallback: 'multichamber.budget.fallbackEnds',
+        stopped: 'multichamber.budget.stoppedEnds',
+      }
+    : {
+        resetsIn: 'multichamber.budget.resetsIn',
+        fallback: 'multichamber.budget.fallback',
+        stopped: 'multichamber.budget.stoppedUntil',
+      };
 
 type BudgetStore = {
   budget: MultichamberBudget | null;
@@ -188,10 +220,13 @@ export const formatBudgetResetDuration = (resetsAt: number, now: number, locale:
   return new Intl.ListFormat(locale, { type: 'unit', style: 'narrow' }).format(parts);
 };
 
-/** "Сброс через 2 дня 4 ч" in the UI language, or null when the reset time is unknown or past. */
+/**
+ * «Сброс через 2 дня 4 ч» или «Тариф закончится через …» на языке интерфейса;
+ * null, когда срок неизвестен, прошёл или бюджета нет (свой ключ).
+ */
 export const useMultichamberBudgetResetLabel = (budget: MultichamberBudget): string | null => {
   const { t } = useI18n();
-  if (budget.resetsAt === null) return null;
+  if (budget.resetsAt === null || getMultichamberBudgetMode(budget) === 'hidden') return null;
   const duration = formatBudgetResetDuration(budget.resetsAt, Date.now(), getCurrentIntlLocale());
-  return duration ? t('multichamber.budget.resetsIn', { duration }) : null;
+  return duration ? t(getMultichamberBudgetResetKeys(budget).resetsIn, { duration }) : null;
 };

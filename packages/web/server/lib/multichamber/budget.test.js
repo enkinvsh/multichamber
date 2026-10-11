@@ -66,6 +66,33 @@ describe('budget route', () => {
     expect(response.body).toMatchObject({ state: 'exhausted', fallback_percent_used: 40, stopped: false, preset: 'balance' });
   });
 
+  it('passes the renewal and own-key flags through', async () => {
+    const fetchImpl = async () => jsonResponse({
+      state: 'exhausted',
+      weekly_percent_used: 100,
+      resets_at: '2026-10-14T18:43:00Z',
+      pack_percent_used: null,
+      has_topup: false,
+      stopped: true,
+      renews: false,
+      byok: false,
+    });
+
+    const response = await request(createApp({ fetchImpl })).get(MULTICHAMBER_BUDGET_ROUTE);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ state: 'exhausted', stopped: true, renews: false, byok: false });
+  });
+
+  it('keeps the own-key flag of a tariff without a budget', async () => {
+    const fetchImpl = async () => jsonResponse({ state: 'ok', weekly_percent_used: null, resets_at: null, pack_percent_used: null, byok: true, renews: true });
+
+    const response = await request(createApp({ fetchImpl })).get(MULTICHAMBER_BUDGET_ROUTE);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ state: 'ok', byok: true, renews: true });
+  });
+
   it('accepts an old gateway payload without the v2 fields', async () => {
     const fetchImpl = async () => jsonResponse({ state: 'warn95', weekly_percent_used: 96, resets_at: null, pack_percent_used: null, has_topup: false });
 

@@ -42,6 +42,10 @@ const budgetPayloadSchema = z.object({
   stopped: z.boolean().nullish(),
   // Незнакомый пресет не должен ронять весь ответ в 502.
   preset: z.enum(['economy', 'balance', 'maximum']).nullish().catch(null),
+  // false: после resets_at подписка кончается, а не начинается новый период.
+  renews: z.boolean().nullish(),
+  // Тариф со своим ключом: бюджета нет, и UI его не показывает.
+  byok: z.boolean().nullish(),
 });
 
 class BudgetUpstreamError extends Error {}

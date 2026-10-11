@@ -15,7 +15,7 @@ const PILL_TONE = {
   warn95: 'border-[var(--status-error-border)] bg-[var(--status-error-background)] text-[var(--status-error-text)]',
   fallback: 'border-[var(--status-warning-border)] bg-[var(--status-warning-background)] text-[var(--status-warning-text)]',
   stopped: 'border-transparent bg-[var(--status-error)] text-[var(--status-error-foreground)]',
-} satisfies Record<MultichamberBudgetMode, string>;
+} satisfies Record<Exclude<MultichamberBudgetMode, 'hidden'>, string>;
 
 type MultichamberBudgetPillProps = {
   budget: MultichamberBudget;
@@ -27,6 +27,7 @@ export const MultichamberBudgetPill: React.FC<MultichamberBudgetPillProps> = ({ 
   const { t } = useI18n();
   const resetLabel = useMultichamberBudgetResetLabel(budget);
   const mode = getMultichamberBudgetMode(budget);
+  if (mode === 'hidden') return null;
   // На запасной модели рублёвый бюджет уже 100%, полезнее доля запасных запросов.
   const label = mode === 'fallback' && budget.fallbackPercent !== null
     ? t('multichamber.budget.fallbackPill', { percent: budget.fallbackPercent })

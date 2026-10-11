@@ -9,12 +9,13 @@ import {
   type MultichamberBudgetMode,
   formatBudgetResetDuration,
   getMultichamberBudgetMode,
+  getMultichamberBudgetResetKeys,
   useMultichamberBudget,
 } from '@/lib/multichamber/budget';
 import { cn } from '@/lib/utils';
 
 type Translate = ReturnType<typeof useI18n>['t'];
-type WarningMode = Exclude<MultichamberBudgetMode, 'ok' | 'stopped'>;
+type WarningMode = Exclude<MultichamberBudgetMode, 'ok' | 'stopped' | 'hidden'>;
 
 const DISMISSED_STORAGE_KEY = 'multichamber.budgetBanner.dismissed';
 
@@ -29,7 +30,7 @@ const warningMessage = (mode: WarningMode, budget: MultichamberBudget, resetDura
   if (mode === 'warn80') return t('multichamber.budget.warn80');
   if (mode === 'warn95') return t('multichamber.budget.warn95');
   return budget.fallbackPercent !== null && resetDuration
-    ? t('multichamber.budget.fallback', { percent: budget.fallbackPercent, duration: resetDuration })
+    ? t(getMultichamberBudgetResetKeys(budget).fallback, { percent: budget.fallbackPercent, duration: resetDuration })
     : t('multichamber.budget.fallbackPlain');
 };
 
@@ -39,7 +40,7 @@ const stoppedMessage = (budget: MultichamberBudget, resetDuration: string | null
   // resets_at приходит только с подпиской; без него запросы остановил кончившийся пакет.
   if (budget.resetsAt === null) return t('multichamber.budget.stoppedPack');
   return resetDuration
-    ? t('multichamber.budget.stoppedUntil', { duration: resetDuration })
+    ? t(getMultichamberBudgetResetKeys(budget).stopped, { duration: resetDuration })
     : t('multichamber.budget.exhausted');
 };
 
@@ -115,7 +116,7 @@ export const MultichamberBudgetBanner: React.FC = () => {
   const [dismissedBanner, setDismissedBanner] = React.useState(readDismissedBanner);
   if (!budget) return null;
   const mode = getMultichamberBudgetMode(budget);
-  if (mode === 'ok') return null;
+  if (mode === 'ok' || mode === 'hidden') return null;
 
   const links = getMultichamberBrand()?.links ?? null;
   const resetDuration =
