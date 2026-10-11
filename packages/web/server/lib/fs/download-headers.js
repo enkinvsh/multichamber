@@ -19,7 +19,8 @@ const encodeRfc5987 = (value) => encodeURIComponent(value)
 // Имя файла на Linux может содержать перевод строки и кавычки: в заголовок они
 // попасть не должны, иначе setHeader бросит ERR_INVALID_CHAR или заголовок сломается.
 const asciiFallbackName = (fileName) => {
-  const ascii = fileName.replace(/[^\x20-\x7e]/g, '').replace(/["\\]/g, '_');
+  // trimStart: от «отчёт продаж.xlsx» без кириллицы остаётся « .xlsx».
+  const ascii = fileName.replace(/[^\x20-\x7e]/g, '').replace(/["\\]/g, '_').trimStart();
   // От «отчёт.xlsx» остаётся «.xlsx»: старые клиенты сохранили бы скрытый файл.
   if (ascii === '' || (ascii.startsWith('.') && !fileName.startsWith('.'))) {
     return `download${ascii}`;

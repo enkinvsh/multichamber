@@ -1762,6 +1762,17 @@ describe('fs file transfer over HTTP', () => {
       expect(Buffer.from(await response.arrayBuffer())).toEqual(content);
     });
 
+    it('does not leave a leading space in the ASCII fallback for a Cyrillic name with spaces', async (context) => {
+      const { project, url } = await setup(context);
+      await nativeFs.writeFile(path.join(project, 'отчёт продаж.xlsx'), 'x');
+
+      const response = await fetch(url('/api/fs/raw', { path: path.join(project, 'отчёт продаж.xlsx'), download: 'true' }));
+
+      expect(response.headers.get('content-disposition')).toBe(
+        `attachment; filename="download.xlsx"; filename*=UTF-8''${encodeURIComponent('отчёт продаж.xlsx')}`,
+      );
+    });
+
     it('sandboxes active SVG content', async (context) => {
       const { project, url } = await setup(context);
       await nativeFs.writeFile(path.join(project, 'icon.svg'), '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>');

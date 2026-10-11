@@ -199,6 +199,13 @@ function shouldSkipCompression(req, res) {
     }
   }
 
+  // mime-db помечает application/octet-stream сжимаемым: xlsx/docx/zip под этим типом
+  // уже сжаты, а brotli на лету съедает CPU слота и убирает Content-Length,
+  // и браузер не показывает прогресс скачивания.
+  if (/^application\/octet-stream\b/i.test(String(res.getHeader('Content-Type') || ''))) {
+    return true;
+  }
+
   return headerIncludesEventStream(res.getHeader('Content-Type'));
 }
 
