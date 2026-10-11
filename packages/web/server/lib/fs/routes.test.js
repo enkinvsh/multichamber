@@ -1,4 +1,5 @@
-import { EventEmitter } from 'events';
+import { EventEmitter, once } from 'events';
+import express from 'express';
 import path from 'path';
 import { copyFile, mkdir, mkdtemp, rm } from 'node:fs/promises';
 import * as nativeFs from 'node:fs/promises';
@@ -9,6 +10,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { mintOutsideFileGrant, registerFsRoutes } from './routes.js';
 import { createProjectDirectoryRuntime } from '../opencode/project-directory-runtime.js';
+import { createFsRootGuard } from '../multichamber/fs-root-guard.js';
+import { ACTIVE_CONTENT_CSP } from './download-headers.js';
 
 const createRouteRegistry = () => {
   const routes = new Map();
@@ -157,6 +160,8 @@ const registerUpload = (fsPromises) => {
         throw Object.assign(new Error('not found'), { code: 'ENOENT' });
       },
       stat: async () => ({ isDirectory: () => false }),
+      // Свободного места с запасом, чтобы проверка 507 не мешала остальным сценариям.
+      statfs: async () => ({ bsize: 4096, blocks: 2 ** 30, bfree: 2 ** 30, bavail: 2 ** 30 }),
       ...fsPromises,
     },
     spawn: vi.fn(),
@@ -188,26 +193,6 @@ const registerRead = (fsPromises, resolveProjectDirectory = async () => ({ direc
     openchamberUserConfigRoot: '/home/user/.config',
   });
   return getRoute('GET', '/api/fs/read');
-};
-
-const registerRaw = (fsPromises) => {
-  const { app, getRoute } = createRouteRegistry();
-  registerFsRoutes(app, {
-    os: { homedir: () => '/home/user' },
-    path: path.posix,
-    fsPromises: {
-      realpath: async (targetPath) => targetPath,
-      ...fsPromises,
-    },
-    spawn: vi.fn(),
-    crypto: { randomUUID: () => 'job-0' },
-    normalizeDirectoryPath: (p) => p,
-    resolveProjectDirectory: async () => ({ directory: '/repo' }),
-    buildAugmentedPath: () => '/usr/bin',
-    resolveGitBinaryForSpawn: () => 'git',
-    openchamberUserConfigRoot: '/home/user/.config',
-  });
-  return getRoute('GET', '/api/fs/raw');
 };
 
 const registerMkdir = (fsPromises) => {
@@ -286,12 +271,6 @@ const callUpload = async (handler, {
 };
 
 const callRead = async (handler, query) => {
-  const res = createMockResponse();
-  await handler({ query }, res);
-  return res;
-};
-
-const callRaw = async (handler, query) => {
   const res = createMockResponse();
   await handler({ query }, res);
   return res;
@@ -412,7 +391,7 @@ describe('fs upload', () => {
 
     expect(res.body).toEqual({ success: true, path: '/repo/file.bin' });
     const tmp = fsPromises.open.mock.calls[0][0];
-    expect(tmp).toMatch(/^\/repo\/file\.bin\.upload-/);
+    expect(tmp).toMatch(/^\/repo\/\.file\.bin\.upload-/);
     expect(fsPromises.open).toHaveBeenCalledWith(tmp, 'wx');
     expect(write).toHaveBeenNthCalledWith(1, Buffer.from([0, 1]), 0, 2, null);
     expect(write).toHaveBeenNthCalledWith(2, Buffer.from([2, 255]), 0, 2, null);
@@ -452,7 +431,7 @@ describe('fs upload', () => {
 
     expect(res.body).toEqual({ success: true, path: '/repo/file.bin' });
     const tmp = fsPromises.open.mock.calls[0][0];
-    expect(tmp).toMatch(/^\/repo\/file\.bin\.upload-/);
+    expect(tmp).toMatch(/^\/repo\/\.file\.bin\.upload-/);
     expect(write).toHaveBeenCalledWith(Buffer.from('upload'), 0, 6, null);
     expect(fsPromises.rename).toHaveBeenCalledWith(tmp, '/repo/file.bin');
   });
@@ -504,10 +483,10 @@ describe('fs upload', () => {
       });
 
       expect(res.statusCode).toBe(413);
-      expect(res.body).toEqual({ error: 'File exceeds maximum size of 5 bytes' });
+      expect(res.body).toEqual({ error: 'File exceeds maximum size of 5 bytes', reason: 'file_too_large', limit: 5 });
       expect(write).toHaveBeenCalledWith(Buffer.from('123'), 0, 3, null);
       expect(fsPromises.link).not.toHaveBeenCalled();
-      expect(fsPromises.unlink).toHaveBeenCalledWith(expect.stringMatching(/^\/repo\/file\.bin\.upload-/));
+      expect(fsPromises.unlink).toHaveBeenCalledWith(expect.stringMatching(/^\/repo\/\.file\.bin\.upload-/));
     } finally {
       if (previous === undefined) delete process.env.OPENCHAMBER_FS_UPLOAD_MAX_BYTES;
       else process.env.OPENCHAMBER_FS_UPLOAD_MAX_BYTES = previous;
@@ -525,7 +504,7 @@ describe('fs upload', () => {
       const res = await callUpload(handler, { body: Buffer.from('123456') });
 
       expect(res.statusCode).toBe(413);
-      expect(res.body).toEqual({ error: 'File exceeds maximum size of 5 bytes' });
+      expect(res.body).toEqual({ error: 'File exceeds maximum size of 5 bytes', reason: 'file_too_large', limit: 5 });
       expect(fsPromises.open).not.toHaveBeenCalled();
     } finally {
       if (previous === undefined) delete process.env.OPENCHAMBER_FS_UPLOAD_MAX_BYTES;
@@ -549,7 +528,7 @@ describe('fs upload', () => {
 
     expect(res.statusCode).toBe(409);
     expect(res.body).toEqual({ error: 'File already exists', reason: 'already-exists' });
-    expect(fsPromises.unlink).toHaveBeenCalledWith(expect.stringMatching(/^\/repo\/file\.bin\.upload-/));
+    expect(fsPromises.unlink).toHaveBeenCalledWith(expect.stringMatching(/^\/repo\/\.file\.bin\.upload-/));
   });
 });
 
@@ -633,30 +612,6 @@ describe('fs read', () => {
     expect(res.statusCode).toBe(400);
     expect(res.body).toEqual({ error: 'Outside workspace file grant does not match requested path' });
     expect(fsPromises.readFile).not.toHaveBeenCalled();
-  });
-
-  it('sets no-referrer on raw responses served through outside file grants', async () => {
-    const fsPromises = {
-      realpath: vi.fn(async (targetPath) => targetPath),
-      stat: vi.fn(async () => ({ isFile: () => true, size: 6 })),
-      readFile: vi.fn(async () => Buffer.from('secret')),
-    };
-    const grant = await mintOutsideFileGrant('/outside/image.png', {
-      scopes: ['raw'],
-      fsPromises,
-      path: path.posix,
-      crypto: { randomUUID: () => 'grant-raw' },
-    });
-    const handler = registerRaw(fsPromises);
-
-    const res = await callRaw(handler, {
-      path: '/outside/image.png',
-      allowOutsideWorkspace: 'true',
-      outsideFileGrant: grant.outsideFileGrant,
-    });
-
-    expect(res.statusCode).toBe(200);
-    expect(res.getHeader('referrer-policy')).toBe('no-referrer');
   });
 
   it('rejects outside workspace mkdir without a trusted directory grant', async () => {
@@ -1009,45 +964,6 @@ describe('fs exec git-read cache', () => {
     await callExec(handler, { commands: [command], cwd: '/repo/worktree-499' }); // cached  -> no spawn
 
     expect(calls.length).toBe(afterFill + 2);
-  });
-});
-
-describe('fs raw download Content-Disposition', () => {
-  it('uses RFC 5987 filename*= encoding for non-ASCII filenames on download', async () => {
-    const fsPromises = {
-      realpath: vi.fn(async (targetPath) => targetPath),
-      stat: vi.fn(async () => ({ isFile: () => true, size: 6 })),
-      readFile: vi.fn(async () => Buffer.from('content')),
-    };
-    const handler = registerRaw(fsPromises);
-
-    const res = await callRaw(handler, {
-      path: '/repo/文件.txt',
-      download: 'true',
-    });
-
-    expect(res.statusCode).toBe(200);
-    const cd = res.getHeader('content-disposition');
-    expect(cd).toContain("filename*=UTF-8''");
-    expect(cd).toContain(encodeURIComponent('文件.txt'));
-    // ASCII fallback strips non-ASCII chars, leaving extension
-    expect(cd).toContain('filename=".txt"');
-  });
-
-  it('uses plain filename for ASCII-only filenames on download', async () => {
-    const fsPromises = {
-      realpath: vi.fn(async (targetPath) => targetPath),
-      stat: vi.fn(async () => ({ isFile: () => true, size: 6 })),
-      readFile: vi.fn(async () => Buffer.from('content')),
-    };
-    const handler = registerRaw(fsPromises);
-
-    const res = await callRaw(handler, { path: '/repo/readme.txt', download: 'true' });
-
-    expect(res.statusCode).toBe(200);
-    const cd = res.getHeader('content-disposition');
-    expect(cd).toContain('filename="readme.txt"');
-    expect(cd).toContain("filename*=UTF-8''readme.txt");
   });
 });
 
@@ -1447,6 +1363,8 @@ describe('fs stat directory error handling', () => {
       await mkdir(path.join(directory, 'fs'));
       await copyFile(new URL('./routes.js', import.meta.url), path.join(directory, 'fs/routes.mjs'));
       await copyFile(new URL('../path-realpath-cache.js', import.meta.url), path.join(directory, 'path-realpath-cache.js'));
+      await copyFile(new URL('./download-headers.js', import.meta.url), path.join(directory, 'fs/download-headers.js'));
+      await copyFile(new URL('./archive.js', import.meta.url), path.join(directory, 'fs/archive.js'));
       expect(() => execFileSync('node', [
         '--input-type=module',
         '--eval',
@@ -1728,6 +1646,456 @@ describe('canonical managed roots with real filesystem aliases', () => {
     expect(response.body).toEqual({
       home: reportedHome, chatsRoot: rawChats,
       canonicalChatsRoot: canonicalChats, canonicalLegacyChatsRoot: canonicalChats,
+    });
+  });
+});
+
+// Реальная ФС и настоящий HTTP: стриминг, обрыв соединения и заголовки
+// видны только на живом сокете, а не на объекте-заглушке ответа.
+describe('fs file transfer over HTTP', () => {
+  const setup = async (context, { fsPromises = nativeFs, withFsRoot = false } = {}) => {
+    const sandbox = await nativeFs.realpath(await nativeFs.mkdtemp(path.join(tmpdir(), 'oc-fs-transfer-')));
+    context.onTestFinished(() => nativeFs.rm(sandbox, { recursive: true, force: true }));
+    const root = path.join(sandbox, 'home');
+    const project = path.join(root, 'project');
+    const other = path.join(root, 'other');
+    const outside = path.join(sandbox, 'outside');
+    await Promise.all([project, other, outside].map((directory) => nativeFs.mkdir(directory, { recursive: true })));
+
+    const projectDirectoryRuntime = createProjectDirectoryRuntime({
+      fsPromises: nativeFs,
+      path,
+      normalizeDirectoryPath: (value) => value,
+      // Без ?directory= запрос попадёт в other/, и файл project/ окажется вне рабочей области.
+      readSettingsFromDiskMigrated: async () => ({ lastDirectory: other, projects: [] }),
+      sanitizeProjects: (input) => input,
+    });
+    const app = express();
+    app.use(createFsRootGuard({ root, homedir: root }));
+    registerFsRoutes(app, {
+      os: { homedir: () => root },
+      path,
+      fsPromises,
+      spawn: vi.fn(),
+      crypto: globalThis.crypto,
+      normalizeDirectoryPath: (value) => value,
+      resolveProjectDirectory: projectDirectoryRuntime.resolveProjectDirectory,
+      buildAugmentedPath: () => '/usr/bin',
+      resolveGitBinaryForSpawn: () => 'git',
+      openchamberUserConfigRoot: path.join(root, '.config', 'openchamber'),
+      managedFsRoot: withFsRoot ? root : undefined,
+    });
+    const server = app.listen(0, '127.0.0.1');
+    await once(server, 'listening');
+    // keep-alive соединения fetch иначе держат server.close() до своего таймаута.
+    context.onTestFinished(() => new Promise((resolve) => {
+      server.close(resolve);
+      server.closeAllConnections();
+    }));
+    const base = `http://127.0.0.1:${server.address().port}`;
+    const url = (route, params) => `${base}${route}?${new URLSearchParams({ directory: project, ...params })}`;
+    return { sandbox, root, project, other, outside, url };
+  };
+
+  const writeTree = async (base, files) => {
+    for (const [relative, content] of Object.entries(files)) {
+      const target = path.join(base, relative);
+      await nativeFs.mkdir(path.dirname(target), { recursive: true });
+      await nativeFs.writeFile(target, content);
+    }
+  };
+
+  const withEnv = async (values, run) => {
+    const previous = Object.fromEntries(Object.keys(values).map((key) => [key, process.env[key]]));
+    Object.assign(process.env, values);
+    try {
+      return await run();
+    } finally {
+      for (const [key, value] of Object.entries(previous)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  };
+
+  const downloadZip = async (context, response) => {
+    const zipPath = path.join(await nativeFs.mkdtemp(path.join(tmpdir(), 'oc-zip-')), 'out.zip');
+    context.onTestFinished(() => nativeFs.rm(path.dirname(zipPath), { recursive: true, force: true }));
+    await nativeFs.writeFile(zipPath, Buffer.from(await response.arrayBuffer()));
+    return zipPath;
+  };
+
+  // Имена читаем из центрального каталога сами: unzip на macOS портит UTF-8 при выводе.
+  // Возвращает имя и флаг UTF-8 (бит 11), без которого Windows покажет кириллицу кракозябрами.
+  const zipEntries = async (zipPath) => {
+    const buffer = await nativeFs.readFile(zipPath);
+    const endOfDirectory = buffer.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
+    const count = buffer.readUInt16LE(endOfDirectory + 10);
+    let offset = buffer.readUInt32LE(endOfDirectory + 16);
+    const entries = [];
+    for (let index = 0; index < count; index += 1) {
+      const flags = buffer.readUInt16LE(offset + 8);
+      const nameLength = buffer.readUInt16LE(offset + 28);
+      const extraLength = buffer.readUInt16LE(offset + 30);
+      const commentLength = buffer.readUInt16LE(offset + 32);
+      entries.push({ name: buffer.toString('utf8', offset + 46, offset + 46 + nameLength), utf8: (flags & 0x800) !== 0 });
+      offset += 46 + nameLength + extraLength + commentLength;
+    }
+    return entries;
+  };
+  const zipNames = async (zipPath) => (await zipEntries(zipPath)).map((entry) => entry.name);
+
+  describe('raw', () => {
+    it('streams a Cyrillic file name as an attachment with an ASCII fallback', async (context) => {
+      const { project, url } = await setup(context);
+      const content = Buffer.from([0x50, 0x4b, 0x03, 0x04, 0xff, 0x00]);
+      await nativeFs.writeFile(path.join(project, 'отчёт.xlsx'), content);
+
+      const response = await fetch(url('/api/fs/raw', { path: path.join(project, 'отчёт.xlsx'), download: 'true' }));
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get('content-disposition')).toBe(
+        `attachment; filename="download.xlsx"; filename*=UTF-8''${encodeURIComponent('отчёт.xlsx')}`,
+      );
+      expect(response.headers.get('x-content-type-options')).toBe('nosniff');
+      expect(response.headers.get('content-length')).toBe(String(content.length));
+      expect(Buffer.from(await response.arrayBuffer())).toEqual(content);
+    });
+
+    it('sandboxes active SVG content', async (context) => {
+      const { project, url } = await setup(context);
+      await nativeFs.writeFile(path.join(project, 'icon.svg'), '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>');
+
+      const response = await fetch(url('/api/fs/raw', { path: path.join(project, 'icon.svg') }));
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get('content-security-policy')).toBe(ACTIVE_CONTENT_CSP);
+    });
+
+    it('leaves PDFs without the sandbox CSP so the browser viewer still opens them', async (context) => {
+      const { project, url } = await setup(context);
+      await nativeFs.writeFile(path.join(project, 'doc.pdf'), '%PDF-1.4');
+
+      const response = await fetch(url('/api/fs/raw', { path: path.join(project, 'doc.pdf') }));
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get('content-type')).toBe('application/pdf');
+      expect(response.headers.get('content-security-policy')).toBeNull();
+    });
+
+    it('scopes a plain navigation by the directory query parameter', async (context) => {
+      const { project, url } = await setup(context);
+      await nativeFs.writeFile(path.join(project, 'note.txt'), 'hello');
+      const target = path.join(project, 'note.txt');
+
+      const scoped = await fetch(url('/api/fs/raw', { path: target }));
+      const unscoped = await fetch(url('/api/fs/raw', { path: target }).replace(/directory=[^&]*&?/, ''));
+
+      expect(scoped.status).toBe(200);
+      expect(await scoped.text()).toBe('hello');
+      expect(unscoped.status).toBe(400);
+    });
+
+    it('refuses a path outside the filesystem root', async (context) => {
+      const { outside, url } = await setup(context);
+      await nativeFs.writeFile(path.join(outside, 'secret.txt'), 'secret');
+
+      const response = await fetch(url('/api/fs/raw', { path: path.join(outside, 'secret.txt') }));
+
+      expect(response.status).toBe(403);
+      expect(await response.json()).toMatchObject({ code: 'outside_fs_root' });
+    });
+
+    it('sets no-referrer on files served through an outside file grant', async (context) => {
+      const { project, url } = await setup(context);
+      await nativeFs.writeFile(path.join(project, 'shared.png'), 'png');
+      const grant = await mintOutsideFileGrant(path.join(project, 'shared.png'), { scopes: ['raw'] });
+
+      const response = await fetch(url('/api/fs/raw', {
+        path: path.join(project, 'shared.png'),
+        allowOutsideWorkspace: 'true',
+        outsideFileGrant: grant.outsideFileGrant,
+      }));
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get('referrer-policy')).toBe('no-referrer');
+    });
+  });
+
+  describe('archive', () => {
+    const projectTree = {
+      'src/main.js': 'console.log(1)\n',
+      'отчёт.txt': 'данные',
+      'node_modules/pkg/index.js': 'module.exports = 1\n',
+      '.git/HEAD': 'ref: refs/heads/main\n',
+    };
+
+    it('counts bytes and files and lists excluded directories on check', async (context) => {
+      const { project, url } = await setup(context);
+      await writeTree(project, projectTree);
+
+      const response = await fetch(url('/api/fs/archive', { path: project, check: '1' }));
+
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body).toMatchObject({
+        path: project,
+        files: 2,
+        bytes: Buffer.byteLength('console.log(1)\n') + Buffer.byteLength('данные'),
+        limit: 2 * 1024 * 1024 * 1024,
+      });
+      expect([...body.excluded].sort()).toEqual(['.git', 'node_modules']);
+    });
+
+    it('refuses a folder over the configured byte limit', async (context) => {
+      const { project, url } = await setup(context);
+      await writeTree(project, projectTree);
+
+      const [check, download] = await withEnv({ OPENCHAMBER_FS_ARCHIVE_MAX_BYTES: '10' }, () => Promise.all([
+        fetch(url('/api/fs/archive', { path: project, check: '1' })),
+        fetch(url('/api/fs/archive', { path: project })),
+      ]));
+
+      for (const response of [check, download]) {
+        expect(response.status).toBe(413);
+        expect(await response.json()).toMatchObject({ reason: 'archive_too_large', limit: 10 });
+      }
+    });
+
+    it('streams a valid zip without excluded directories or symlinked content', async (context) => {
+      const { project, outside, url } = await setup(context);
+      await writeTree(project, projectTree);
+      await nativeFs.writeFile(path.join(outside, 'secret.txt'), 'secret');
+      await nativeFs.symlink(outside, path.join(project, 'linked-dir'));
+      await nativeFs.symlink(path.join(outside, 'secret.txt'), path.join(project, 'linked-file.txt'));
+
+      const response = await fetch(url('/api/fs/archive', { path: project }));
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get('content-type')).toBe('application/zip');
+      expect(response.headers.get('content-disposition')).toBe(
+        "attachment; filename=\"project.zip\"; filename*=UTF-8''project.zip",
+      );
+      const zipPath = await downloadZip(context, response);
+      execFileSync('unzip', ['-tq', zipPath]);
+      expect((await zipNames(zipPath)).sort()).toEqual(['project/src/main.js', 'project/отчёт.txt']);
+      expect((await zipEntries(zipPath)).find((entry) => entry.name === 'project/отчёт.txt')?.utf8).toBe(true);
+      expect(execFileSync('unzip', ['-p', zipPath, 'project/src/main.js'], { encoding: 'utf8' })).toBe('console.log(1)\n');
+    });
+
+    it('includes excluded directories when full=1', async (context) => {
+      const { project, url } = await setup(context);
+      await writeTree(project, projectTree);
+
+      const response = await fetch(url('/api/fs/archive', { path: project, full: '1' }));
+
+      expect(response.status).toBe(200);
+      const zipPath = await downloadZip(context, response);
+      expect(await zipNames(zipPath)).toEqual(expect.arrayContaining([
+        'project/node_modules/pkg/index.js',
+        'project/.git/HEAD',
+      ]));
+    });
+
+    it('answers 429 while another archive is being built and frees the slot afterwards', async (context) => {
+      let releaseWalk;
+      const walkGate = new Promise((resolve) => {
+        releaseWalk = resolve;
+      });
+      let walkStarted;
+      const walkStartedSignal = new Promise((resolve) => {
+        walkStarted = resolve;
+      });
+      const fsPromises = {
+        ...nativeFs,
+        readdir: async (...args) => {
+          walkStarted();
+          await walkGate;
+          return nativeFs.readdir(...args);
+        },
+      };
+      const { project, url } = await setup(context, { fsPromises });
+      await writeTree(project, projectTree);
+
+      const first = fetch(url('/api/fs/archive', { path: project }));
+      await walkStartedSignal;
+      const second = await fetch(url('/api/fs/archive', { path: project }));
+      releaseWalk();
+      const firstResponse = await first;
+      await firstResponse.arrayBuffer();
+      const third = await fetch(url('/api/fs/archive', { path: project }));
+      await third.arrayBuffer();
+
+      expect(second.status).toBe(429);
+      expect(await second.json()).toMatchObject({ reason: 'archive_busy' });
+      expect(firstResponse.status).toBe(200);
+      expect(third.status).toBe(200);
+    });
+
+    it('frees the archive slot when the client disconnects mid-walk', async (context) => {
+      let releaseWalk;
+      const walkGate = new Promise((resolve) => {
+        releaseWalk = resolve;
+      });
+      let walkStarted;
+      const walkStartedSignal = new Promise((resolve) => {
+        walkStarted = resolve;
+      });
+      const fsPromises = {
+        ...nativeFs,
+        readdir: async (...args) => {
+          walkStarted();
+          await walkGate;
+          return nativeFs.readdir(...args);
+        },
+      };
+      const { project, url } = await setup(context, { fsPromises });
+      await writeTree(project, projectTree);
+      const abort = new AbortController();
+
+      const first = fetch(url('/api/fs/archive', { path: project }), { signal: abort.signal }).catch((error) => error);
+      await walkStartedSignal;
+      abort.abort();
+      await first;
+      releaseWalk();
+      // Сервер узнаёт об обрыве асинхронно, поэтому слот проверяется с ограниченным ожиданием.
+      const status = await vi.waitFor(async () => {
+        const response = await fetch(url('/api/fs/archive', { path: project }));
+        await response.arrayBuffer();
+        if (response.status === 429) throw new Error('archive slot still taken');
+        return response.status;
+      });
+
+      expect(status).toBe(200);
+    });
+  });
+
+  describe('upload', () => {
+    const upload = (url, target, body, params = {}) => fetch(url('/api/fs/upload', { path: target, ...params }), {
+      method: 'POST',
+      headers: { 'content-type': 'application/octet-stream' },
+      body,
+    });
+
+    it('renames on conflict instead of overwriting', async (context) => {
+      const { project, url } = await setup(context);
+      const target = path.join(project, 'a.txt');
+
+      const results = [];
+      for (const content of ['one', 'two', 'three']) {
+        const response = await upload(url, target, content, { onConflict: 'rename' });
+        results.push(await response.json());
+      }
+
+      expect(results.map((result) => result.path)).toEqual([
+        target,
+        path.join(project, 'a (2).txt'),
+        path.join(project, 'a (3).txt'),
+      ]);
+      expect(await nativeFs.readFile(target, 'utf8')).toBe('one');
+      expect(await nativeFs.readFile(path.join(project, 'a (3).txt'), 'utf8')).toBe('three');
+    });
+
+    it('numbers a dotfile by appending to its name', async (context) => {
+      const { project, url } = await setup(context);
+      await nativeFs.writeFile(path.join(project, '.env'), 'A=1');
+
+      const response = await upload(url, path.join(project, '.env'), 'A=2', { onConflict: 'rename' });
+
+      expect(await response.json()).toEqual({ success: true, path: path.join(project, '.env (2)') });
+    });
+
+    it('rejects a body over the limit and leaves no temp file behind', async (context) => {
+      const { project, url } = await setup(context);
+
+      const response = await withEnv({ OPENCHAMBER_FS_UPLOAD_MAX_BYTES: '4' }, () => upload(url, path.join(project, 'big.bin'), '0123456789'));
+
+      expect(response.status).toBe(413);
+      expect(await response.json()).toMatchObject({ reason: 'file_too_large', limit: 4 });
+      expect(await nativeFs.readdir(project)).toEqual([]);
+    });
+
+    it('refuses an upload that would eat into the free-space reserve', async (context) => {
+      const fsPromises = {
+        ...nativeFs,
+        statfs: async () => ({ bsize: 1024, blocks: 4096, bfree: 2048, bavail: 2048 }),
+      };
+      const { project, url } = await setup(context, { fsPromises });
+
+      const response = await withEnv({ OPENCHAMBER_FS_MIN_FREE_BYTES: String(2 * 1024 * 1024) }, () => upload(url, path.join(project, 'x.bin'), 'abc'));
+
+      expect(response.status).toBe(507);
+      expect(await response.json()).toEqual({
+        error: 'Not enough free disk space',
+        reason: 'insufficient_storage',
+        free: 2048 * 1024,
+        required: 3 + 2 * 1024 * 1024,
+      });
+      expect(await nativeFs.readdir(project)).toEqual([]);
+    });
+  });
+
+  it('reports disk usage in bytes', async (context) => {
+    const { project, url } = await setup(context);
+
+    const response = await fetch(url('/api/fs/disk', { path: project }));
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.path).toBe(project);
+    expect(body.total).toBeGreaterThan(0);
+    expect(body.free).toBeGreaterThan(0);
+    expect(body.used).toBeGreaterThanOrEqual(0);
+    expect(body.free).toBeLessThanOrEqual(body.total);
+  });
+
+  // Под zeny агент кладёт вложения в ~/uploads и ссылается на файлы соседних
+  // проектов, а чат открыт в одном проекте: внутри MULTICHAMBER_FS_ROOT путь
+  // должен открываться из любой рабочей области.
+  describe('MULTICHAMBER_FS_ROOT as a managed root', () => {
+    const uploadsFile = async (root) => {
+      const target = path.join(root, 'uploads', 'отчёт (2).txt');
+      await nativeFs.mkdir(path.dirname(target), { recursive: true });
+      await nativeFs.writeFile(target, 'данные');
+      return target;
+    };
+
+    for (const route of ['/api/fs/stat', '/api/fs/read', '/api/fs/raw']) {
+      it(`serves ${route} for a file under the root outside the project`, async (context) => {
+        const { root, url } = await setup(context, { withFsRoot: true });
+        const target = await uploadsFile(root);
+
+        const response = await fetch(url(route, { path: target }));
+
+        expect(response.status).toBe(200);
+      });
+
+      it(`still rejects ${route} outside the project when the root is not configured`, async (context) => {
+        const { root, url } = await setup(context);
+        const target = await uploadsFile(root);
+
+        const response = await fetch(url(route, { path: target }));
+
+        expect(response.status).toBe(400);
+      });
+    }
+
+    it('serves a file from a sibling project under the root', async (context) => {
+      const { other, url } = await setup(context, { withFsRoot: true });
+      await nativeFs.writeFile(path.join(other, 'notes.md'), '# заметки');
+
+      const response = await fetch(url('/api/fs/read', { path: path.join(other, 'notes.md') }));
+
+      expect(response.status).toBe(200);
+    });
+
+    it('keeps paths outside the root forbidden by the guard', async (context) => {
+      const { outside, url } = await setup(context, { withFsRoot: true });
+      await nativeFs.writeFile(path.join(outside, 'secret.txt'), 'x');
+
+      const response = await fetch(url('/api/fs/read', { path: path.join(outside, 'secret.txt') }));
+
+      expect(response.status).toBe(403);
     });
   });
 });

@@ -39,8 +39,9 @@ import { registerTtsRoutes } from './lib/tts/routes.js';
 import { detectSayTtsCapability } from './lib/tts/capability-runtime.js';
 import { createTerminalRuntime } from './lib/terminal/runtime.js';
 import { createDictationRuntime } from './lib/dictation/runtime.js';
-import { createMultichamberDevServerFilter, installMultichamber } from './lib/multichamber/install.js';
+import { createMultichamberDevServerFilter, installMultichamber, readMultichamberPolicy } from './lib/multichamber/install.js';
 import { createMultichamberBrand } from './lib/multichamber/brand.js';
+import { isLockdownEnabled } from './lib/multichamber/lockdown-guard.js';
 import {
   createGlobalUiEventBroadcaster,
   createGlobalMessageStreamHub,
@@ -1278,7 +1279,9 @@ const openCodeLifecycleRuntime = createOpenCodeLifecycleRuntime({
     // Each capability is its own tool and its own switch; the plugin is only
     // injected while at least one of them is on.
     const includeControl = settings?.agentControlToolEnabled !== false;
-    const includeWeb = settings?.agentWebToolEnabled !== false;
+    // Под lockdown openchamber_web не выдаётся (см. agent-tool/runtime.js); без этого
+    // включённый только web-инструмент привёл бы к пустому плагину и ошибке инъекции.
+    const includeWeb = settings?.agentWebToolEnabled !== false && !isLockdownEnabled();
     const includeMemory = isAgentMemoryFeatureAvailable() && settings?.agentMemoryToolEnabled === true;
     const managedEnv = includeControl || includeWeb || includeMemory
       ? await (agentToolRuntime?.prepareManagedOpenCodeEnv({ includeControl, includeWeb, includeMemory }) || {})
@@ -1976,6 +1979,8 @@ async function main(options = {}) {
     builtInExtensionsDir: options.builtInExtensionsDir,
     openchamberUserConfigRoot: OPENCHAMBER_USER_CONFIG_ROOT,
     managedChatsRoot: OPENCHAMBER_CHATS_DIR,
+    // Тот же корень, что читает fs-root-guard: читаем через общую политику, чтобы правила разбора env не разошлись.
+    managedFsRoot: readMultichamberPolicy().fsRoot,
     normalizeDirectoryPath,
     resolveProjectDirectory,
     resolveOptionalProjectDirectory,

@@ -9,7 +9,12 @@ the user can want independently:
 - `openchamber` — projects, sessions, worktrees, and scheduled tasks. Enabled
   while the persisted `agentControlToolEnabled` setting is not `false`.
 - `openchamber_web` — looking at and interacting with the page in OpenChamber's
-  browser panel. Enabled while `agentWebToolEnabled` is not `false`.
+  browser panel. Enabled while `agentWebToolEnabled` is not `false`, and never
+  under MultiChamber lockdown (`MULTICHAMBER_LOCKDOWN=1`): a locked container has
+  no browser panel, so an agent calling it would wait for the page until the
+  request timeout. `prepareManagedOpenCodeEnv` drops it from its `env`, and
+  `index.js` already passes `includeWeb: false` so a web-only selection injects
+  no plugin instead of failing.
 
 Both default to on, are toggled in Settings → General → OpenCode CLI, and apply
 on the next managed OpenCode restart. Each tool carries only its own actions and

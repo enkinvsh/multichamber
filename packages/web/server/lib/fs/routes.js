@@ -1,6 +1,9 @@
 import { createRealpathCache } from '../path-realpath-cache.js';
 import nodeFsPromises from 'node:fs/promises';
 import nodePath from 'node:path';
+import { pipeline } from 'node:stream/promises';
+import { ACTIVE_CONTENT_CSP, attachmentDisposition, isActiveContentType } from './download-headers.js';
+import { measureDirectory, readArchiveLimits, streamDirectoryZip } from './archive.js';
 
 const EXEC_JOB_TTL_MS = 30 * 60 * 1000;
 const OUTSIDE_FILE_GRANT_TTL_MS = 10 * 60 * 1000;
@@ -113,6 +116,58 @@ const createUploadMaxBytes = () => {
   if (Number.isFinite(raw) && raw > 0) return Math.floor(raw);
   return 100 * 1024 * 1024;
 };
+
+// Запас под рабочие файлы агента и git: заливка не должна забивать диск пользователя до нуля.
+const createMinFreeBytes = () => {
+  const raw = Number(process.env.OPENCHAMBER_FS_MIN_FREE_BYTES);
+  if (Number.isFinite(raw) && raw >= 0) return Math.floor(raw);
+  return 1024 * 1024 * 1024;
+};
+
+// bavail, а не bfree: зарезервированные под root блоки пользователю dev недоступны.
+const readDiskSpace = async (fsPromises, targetPath) => {
+  const stats = await fsPromises.statfs(targetPath);
+  return {
+    total: stats.blocks * stats.bsize,
+    free: stats.bavail * stats.bsize,
+    used: (stats.blocks - stats.bfree) * stats.bsize,
+  };
+};
+
+// Повтор ?path= (массив в req.query) считается ошибкой запроса, как в /api/fs/directory-stat.
+const singlePathQuery = (req) => {
+  const values = new URL(req.url, 'http://openchamber.local').searchParams.getAll('path');
+  return values.length === 1 ? values[0].trim() : '';
+};
+
+// Предел перебора «name (N).ext»: дальше это уже не конфликт имён, а сбой.
+const MAX_RENAME_ATTEMPTS = 1000;
+
+const numberedFileName = (fileName, number, path) => {
+  // extname('.env') и extname('Makefile') пусты, поэтому номер встаёт в конец имени.
+  const extension = path.extname(fileName);
+  const stem = extension ? fileName.slice(0, -extension.length) : fileName;
+  return `${stem} (${number})${extension}`;
+};
+
+// link() не заменяет существующий файл, поэтому параллельные заливки с одним именем
+// никогда не перезапишут друг друга: проигравшая просто берёт следующий номер.
+const linkUnderFreeName = async ({ fsPromises, path, tmp, directory, fileName }) => {
+  for (let attempt = 1; attempt <= MAX_RENAME_ATTEMPTS; attempt += 1) {
+    const candidate = attempt === 1 ? fileName : numberedFileName(fileName, attempt, path);
+    try {
+      await fsPromises.link(tmp, path.join(directory, candidate));
+      return candidate;
+    } catch (error) {
+      if (error?.code !== 'EEXIST') throw error;
+    }
+  }
+  throw Object.assign(new Error('No free file name left'), { code: 'EEXIST' });
+};
+
+// Один архив на процесс: обход и сжатие большого дерева нагружают диск и CPU
+// контейнера (~3 ГиБ RAM), в котором параллельно работает агент пользователя.
+let archiveInProgress = false;
 
 const FILE_MIME_MAP = Object.freeze({
   '.html': 'text/html',
@@ -560,6 +615,7 @@ export const registerFsRoutes = (app, dependencies) => {
     resolveGitBinaryForSpawn,
     openchamberUserConfigRoot,
     managedChatsRoot,
+    managedFsRoot,
   } = dependencies;
   // Chat worktrees may live outside every project workspace; both managed
   // roots stay valid filesystem targets.
@@ -567,6 +623,13 @@ export const registerFsRoutes = (app, dependencies) => {
     ? path.resolve(managedChatsRoot.trim())
     : path.join(openchamberUserConfigRoot, 'chats');
   const managedRoots = [path.resolve(openchamberUserConfigRoot), chatsRoot];
+  // MultiChamber: корень MULTICHAMBER_FS_ROOT (домашняя папка контейнера) уже
+  // ограничен fs-root-guard, поэтому внутри него открываем любые файлы, а не
+  // только файлы активного проекта: агент сохраняет вложения в ~/uploads и
+  // ссылается на соседние проекты. Без переменной доступ не расширяется.
+  if (typeof managedFsRoot === 'string' && managedFsRoot.trim()) {
+    managedRoots.push(path.resolve(managedFsRoot.trim()));
+  }
   const realpathCache = createRealpathCache({
     realpath: fsPromises.realpath.bind(fsPromises),
   });
@@ -1102,24 +1165,41 @@ export const registerFsRoutes = (app, dependencies) => {
       };
       const mimeType = mimeMap[ext] || 'application/octet-stream';
 
-      const download = req.query.download === 'true';
-      if (download) {
-        const fileName = path.basename(canonicalPath);
-        // RFC 5987: use filename*= for non-ASCII filenames, with ASCII-only
-        // filename= as fallback for older clients.
-        const asciiOnly = fileName.replace(/[^\u0000-\u007F]/g, '');
-        const fallback = asciiOnly || 'file';
-        // Percent-encode the raw UTF-8 bytes for filename*=
-        const encoded = encodeURIComponent(fileName);
-        res.setHeader('Content-Disposition', `attachment; filename="${fallback}"; filename*=UTF-8''${encoded}`);
+      // Размер берём у открытого дескриптора: Content-Length и отдаваемые байты
+      // относятся к одному файлу, даже если путь подменили после stat.
+      const handle = await fsPromises.open(canonicalPath, 'r');
+      let size;
+      try {
+        size = (await handle.stat()).size;
+      } catch (error) {
+        await handle.close();
+        throw error;
       }
 
-      const content = await fsPromises.readFile(canonicalPath);
+      res.setHeader('Content-Length', String(size));
       res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      // Ссылка на raw открывается обычной навигацией на origin приложения: без sandbox
+      // скрипт внутри SVG выполнился бы с доступом к сессии пользователя.
+      if (isActiveContentType(mimeType)) {
+        res.setHeader('Content-Security-Policy', ACTIVE_CONTENT_CSP);
+      }
+      if (req.query.download === 'true') {
+        res.setHeader('Content-Disposition', attachmentDisposition(path.basename(canonicalPath)));
+      }
       if (resolved.granted) {
         res.setHeader('Referrer-Policy', 'no-referrer');
       }
-      return res.type(mimeType).send(content);
+      res.type(mimeType);
+      try {
+        await pipeline(handle.createReadStream(), res);
+      } catch (error) {
+        // Закрытая вкладка или отменённая загрузка — обычное завершение, не ошибка сервера.
+        if (error?.code !== 'ERR_STREAM_PREMATURE_CLOSE') {
+          console.error('Failed to stream raw file:', error);
+        }
+      }
+      return undefined;
     } catch (error) {
       const err = error;
       if (err && typeof err === 'object' && err.code === 'ENOENT') {
@@ -1130,6 +1210,126 @@ export const registerFsRoutes = (app, dependencies) => {
       }
       console.error('Failed to read raw file:', error);
       return res.status(500).json({ error: (error && error.message) || 'Failed to read file' });
+    }
+  });
+
+  app.get('/api/fs/archive', async (req, res) => {
+    const directoryPath = singlePathQuery(req);
+    if (!directoryPath) {
+      return res.status(400).json({ error: 'Path is required' });
+    }
+    const checkOnly = req.query.check === '1';
+    const includeExcluded = req.query.full === '1';
+    if (!checkOnly && archiveInProgress) {
+      return res.status(429).json({ error: 'Another archive is being prepared', reason: 'archive_busy' });
+    }
+    if (!checkOnly) archiveInProgress = true;
+    let clientGone = false;
+    res.once('close', () => {
+      clientGone = true;
+    });
+
+    try {
+      const resolved = await resolveWorkspacePathFromContext({
+        req,
+        targetPath: directoryPath,
+        resolveProjectDirectory,
+        path,
+        os,
+        fsPromises,
+        normalizeDirectoryPath,
+        managedRoots,
+      });
+      if (!resolved.ok) {
+        return res.status(400).json({ error: resolved.error });
+      }
+      const root = await fsPromises.realpath(resolved.resolved);
+      if (!(await fsPromises.stat(root)).isDirectory()) {
+        return res.status(400).json({ error: 'Specified path is not a directory', reason: 'not-directory' });
+      }
+
+      const limits = readArchiveLimits();
+      const measured = await measureDirectory({
+        root,
+        includeExcluded,
+        limits,
+        fsPromises,
+        isAborted: () => clientGone,
+      });
+      if (clientGone) return undefined;
+      if (measured.overLimit) {
+        return res.status(413).json({
+          error: 'Folder is too large to archive',
+          reason: 'archive_too_large',
+          bytes: measured.bytes,
+          limit: limits.maxBytes,
+          files: measured.files.length,
+          fileLimit: limits.maxFiles,
+        });
+      }
+      if (checkOnly) {
+        return res.json({
+          path: resolved.resolved,
+          bytes: measured.bytes,
+          files: measured.files.length,
+          limit: limits.maxBytes,
+          excluded: measured.excluded,
+        });
+      }
+
+      const rootName = path.basename(root) || 'archive';
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', attachmentDisposition(`${rootName}.zip`));
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      const { skipped } = await streamDirectoryZip({ rootName, measured, output: res, fsPromises });
+      if (skipped > 0) {
+        console.warn(`Archive of ${root} skipped ${skipped} unreadable entries`);
+      }
+      return undefined;
+    } catch (error) {
+      if (res.headersSent || res.destroyed) {
+        if (error?.code !== 'ERR_STREAM_PREMATURE_CLOSE') {
+          console.error('Failed to stream archive:', error);
+        }
+        return undefined;
+      }
+      if (error?.code === 'ENOENT') {
+        return res.status(404).json({ error: 'Directory not found', reason: 'not-found' });
+      }
+      if (error?.code === 'ENOTDIR') {
+        return res.status(400).json({ error: 'Specified path is not a directory', reason: 'not-directory' });
+      }
+      if (isOsPermissionError(error)) {
+        return sendOsPermissionDenied(res, 'Access to directory denied');
+      }
+      console.error('Failed to archive directory:', error);
+      return res.status(500).json({ error: 'Failed to archive directory' });
+    } finally {
+      if (!checkOnly) archiveInProgress = false;
+    }
+  });
+
+  app.get('/api/fs/disk', async (req, res) => {
+    const targetPath = singlePathQuery(req);
+    if (!targetPath) {
+      return res.status(400).json({ error: 'Path is required' });
+    }
+    try {
+      // Только счётчики файловой системы, без содержимого: как /api/fs/directory-stat,
+      // маршрут не привязан к активному проекту, границу задаёт fs-root-guard.
+      const resolvedPath = path.resolve(normalizeDirectoryPath(targetPath));
+      const space = await readDiskSpace(fsPromises, resolvedPath);
+      return res.json({ path: resolvedPath, ...space });
+    } catch (error) {
+      if (error?.code === 'ENOENT') {
+        return res.status(404).json({ error: 'Path not found', reason: 'not-found' });
+      }
+      if (isOsPermissionError(error)) {
+        return sendOsPermissionDenied(res, 'Access denied');
+      }
+      console.error('Failed to read disk usage:', error);
+      return res.status(500).json({ error: 'Failed to read disk usage' });
     }
   });
 
@@ -1252,7 +1452,9 @@ export const registerFsRoutes = (app, dependencies) => {
 
   app.post('/api/fs/upload', async (req, res) => {
     const filePath = typeof req.query?.path === 'string' ? req.query.path.trim() : '';
-    const overwrite = req.query?.overwrite === 'true';
+    // При rename конфликт имён разрешается новым именем, поэтому overwrite игнорируется.
+    const renameOnConflict = req.query?.onConflict === 'rename';
+    const overwrite = req.query?.overwrite === 'true' && !renameOnConflict;
     if (!filePath) {
       return res.status(400).json({ error: 'Path is required' });
     }
@@ -1264,7 +1466,11 @@ export const registerFsRoutes = (app, dependencies) => {
     const declaredSize = Number(req.headers?.['content-length']);
     if (Number.isFinite(declaredSize) && declaredSize > maxUploadBytes) {
       req.resume?.();
-      return res.status(413).json({ error: `File exceeds maximum size of ${maxUploadBytes} bytes` });
+      return res.status(413).json({
+        error: `File exceeds maximum size of ${maxUploadBytes} bytes`,
+        reason: 'file_too_large',
+        limit: maxUploadBytes,
+      });
     }
 
     try {
@@ -1289,18 +1495,34 @@ export const registerFsRoutes = (app, dependencies) => {
         return res.status(403).json({ error: 'Access denied' });
       }
 
+      // Без Content-Length размер неизвестен, но запас всё равно проверяется.
+      const minFreeBytes = createMinFreeBytes();
+      const required = (Number.isFinite(declaredSize) ? declaredSize : 0) + minFreeBytes;
+      const { free } = await readDiskSpace(fsPromises, canonicalParent);
+      if (free < required) {
+        req.resume?.();
+        return res.status(507).json({
+          error: 'Not enough free disk space',
+          reason: 'insufficient_storage',
+          free,
+          required,
+        });
+      }
+
       const existingPath = await fsPromises.realpath(resolved.resolved).catch((error) => {
         if (error && typeof error === 'object' && error.code === 'ENOENT') {
           return null;
         }
         throw error;
       });
-      const writePath = existingPath || path.join(canonicalParent, path.basename(resolved.resolved));
+      const requestedName = path.basename(resolved.resolved);
+      // В режиме rename существующий путь (и симлинк на нём) не трогаем: пишем рядом под новым именем.
+      const writePath = (!renameOnConflict && existingPath) || path.join(canonicalParent, requestedName);
       if (!isPathWithinRoot(writePath, canonicalBase, path, os)) {
         return res.status(403).json({ error: 'Access denied' });
       }
 
-      if (existingPath) {
+      if (existingPath && !renameOnConflict) {
         const stats = await fsPromises.stat(existingPath);
         if (stats.isDirectory()) {
           return res.status(400).json({ error: 'Specified path is a directory' });
@@ -1311,7 +1533,13 @@ export const registerFsRoutes = (app, dependencies) => {
         }
       }
 
-      const tmp = `${writePath}.upload-${crypto.randomUUID()}`;
+      // Скрытое имя: незаконченная заливка не мелькает в дереве файлов. Имя обрезано,
+      // чтобы с суффиксом не превысить NAME_MAX (255 байт).
+      const tmp = path.join(
+        path.dirname(writePath),
+        `.${path.basename(writePath).slice(0, 64)}.upload-${crypto.randomUUID()}`,
+      );
+      let finalName = requestedName;
       let tempExists = false;
       try {
         const handle = await fsPromises.open(tmp, 'wx');
@@ -1329,7 +1557,10 @@ export const registerFsRoutes = (app, dependencies) => {
         }
         if (streamError) throw streamError;
 
-        if (overwrite) {
+        if (renameOnConflict) {
+          finalName = await linkUnderFreeName({ fsPromises, path, tmp, directory: canonicalParent, fileName: requestedName });
+          await fsPromises.unlink(tmp).catch(() => {});
+        } else if (overwrite) {
           await fsPromises.rename(tmp, writePath);
         } else {
           // A same-directory hard link commits without replacing a target that
@@ -1346,7 +1577,7 @@ export const registerFsRoutes = (app, dependencies) => {
         throw error;
       }
 
-      return res.json({ success: true, path: resolved.resolved });
+      return res.json({ success: true, path: path.join(path.dirname(resolved.resolved), finalName) });
     } catch (error) {
       const err = error;
       if (err && typeof err === 'object' && err.code === 'EEXIST') {
@@ -1356,7 +1587,11 @@ export const registerFsRoutes = (app, dependencies) => {
         return res.status(404).json({ error: 'Destination directory not found', reason: 'not-found' });
       }
       if (err && typeof err === 'object' && err.uploadTooLarge) {
-        return res.status(413).json({ error: `File exceeds maximum size of ${maxUploadBytes} bytes` });
+        return res.status(413).json({
+          error: `File exceeds maximum size of ${maxUploadBytes} bytes`,
+          reason: 'file_too_large',
+          limit: maxUploadBytes,
+        });
       }
       if (err && typeof err === 'object' && (err.code === 'EISDIR' || err.code === 'ENOTDIR')) {
         return res.status(400).json({ error: 'Specified path is a directory' });

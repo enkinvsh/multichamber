@@ -206,6 +206,16 @@ describe('managed agent tool runtime', () => {
     expect(Object.keys(tool)).toEqual(['openchamber_web']);
   });
 
+  it('withholds the web tool under MultiChamber lockdown and keeps the rest', async () => {
+    const { runtime, dataDir } = await createRuntime({ env: { MULTICHAMBER_LOCKDOWN: '1' } });
+    await runtime.prepareManagedOpenCodeEnv({ includeControl: true, includeWeb: true, includeMemory: false });
+    const pluginPath = path.join(dataDir, 'agent-tool', 'openchamber-plugin.js');
+    const pluginModule = await import(`${pathToFileURL(pluginPath).href}?lockdown=${Date.now()}`);
+    const { tool } = await pluginModule.OpenChamberPlugin();
+
+    expect(Object.keys(tool)).toEqual(['openchamber']);
+  });
+
   it('exposes memory as its own tool carrying only its own inputs', async () => {
     const { runtime, dataDir } = await createRuntime();
     await runtime.prepareManagedOpenCodeEnv({ includeControl: true, includeWeb: false, includeMemory: true });

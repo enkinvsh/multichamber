@@ -1,5 +1,6 @@
 import { pathToFileURL } from 'node:url';
 import { appendManagedPlugin } from '../opencode/managed-plugin-config.js';
+import { isLockdownEnabled } from '../multichamber/lockdown-guard.js';
 import {
   OPENCHAMBER_AGENT_TOOL_ACTION_DEFINITIONS,
   OPENCHAMBER_AGENT_TOOL_ACTIONS,
@@ -307,11 +308,14 @@ export const createAgentToolRuntime = (dependencies) => {
     if (!Number.isInteger(port) || port <= 0) {
       throw new Error('OpenChamber listener port is unavailable for managed tool injection');
     }
-    if (!includeControl && !includeWeb && !includeMemory) {
+    // В lockdown браузера в контейнере нет: агент, вызвавший openchamber_web,
+    // ждал бы ответа страницы до таймаута (45 с), поэтому инструмент не выдаётся вовсе.
+    const webEnabled = includeWeb && !isLockdownEnabled(env);
+    if (!includeControl && !webEnabled && !includeMemory) {
       throw new Error('At least one OpenChamber managed tool must be enabled to inject the plugin');
     }
     await fsPromises.mkdir(pluginDirectory, { recursive: true });
-    await fsPromises.writeFile(pluginPath, createPluginSource({ includeControl, includeWeb, includeMemory }), { mode: 0o600 });
+    await fsPromises.writeFile(pluginPath, createPluginSource({ includeControl, includeWeb: webEnabled, includeMemory }), { mode: 0o600 });
     activeToken = crypto.randomBytes(32).toString('base64url');
     const pluginUrl = pathToFileURL(pluginPath).href;
     const callbackAddress = getConcreteBoundAddress() || '127.0.0.1';
