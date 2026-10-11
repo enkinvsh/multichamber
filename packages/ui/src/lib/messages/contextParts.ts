@@ -124,6 +124,19 @@ type GuestPrContext = {
     data?: JsonValue;
 };
 
+/** Предел записей в метаданных: пузырь показывает чипы, а не архив целиком. */
+export const SAVED_FILES_LIMIT = 50;
+
+/**
+ * Вложения, сохранённые в ~/uploads перед отправкой. Файлы «только на диске»
+ * не уходят file-частью, поэтому без этих метаданных пузырь пользователя их не
+ * показывает: синтетический текст с путями видит лишь модель.
+ */
+export type SavedFilesContext = {
+    kind: 'saved-files';
+    files: { path: string; name: string; diskOnly: boolean }[];
+};
+
 export type ContextPartPayload =
     | CodeCommentContext
     | TerminalContextPayload
@@ -136,7 +149,8 @@ export type ContextPartPayload =
     | GitHubPrContext
     | LinearIssueContext
     | GuestIssueContext
-    | GuestPrContext;
+    | GuestPrContext
+    | SavedFilesContext;
 
 type OpenCodeCommentMetadata = {
     path: string;
@@ -199,6 +213,7 @@ export function formatContextText(payload: ContextPartPayload): string {
         case 'linear-issue':
         case 'guest-issue':
         case 'guest-pr':
+        case 'saved-files':
             // Linked issues/PRs carry picker-built context text;
             // there is no default text to derive here.
             return '';
@@ -380,6 +395,14 @@ const contextPayloadSchema = z.discriminatedUnion('kind', [
         url: z.string(),
         data: z.json().optional(),
     }),
+    z.object({
+        kind: z.literal('saved-files'),
+        files: z.array(z.object({
+            path: z.string().min(1),
+            name: z.string().min(1),
+            diskOnly: z.boolean(),
+        })).min(1).max(SAVED_FILES_LIMIT),
+    }),
 ]);
 
 /**
@@ -526,6 +549,8 @@ export function draftFromContextPayload(
         case 'linear-issue':
         case 'guest-issue':
         case 'guest-pr':
+        case 'saved-files':
+            // У saved-files тоже нет черновика: файлы уже на диске, вернуть их в композер нечем.
             return null;
     }
 }

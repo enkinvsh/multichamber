@@ -219,3 +219,28 @@ describe('round-trip through part metadata', () => {
         expect(hasContextParts([])).toBe(false);
     });
 });
+
+describe('saved-files context', () => {
+    const payload: ContextPartPayload = {
+        kind: 'saved-files',
+        files: [
+            { path: '/home/dev/uploads/qa.zip', name: 'qa.zip', diskOnly: true },
+            { path: '/home/dev/uploads/a.png', name: 'a.png', diskOnly: false },
+        ],
+    };
+
+    test('keeps the sender text and reads the payload back from metadata', () => {
+        const part = createContextPart(payload, 'notice text');
+        expect(part.text).toBe('notice text');
+        expect(readContextPart({ type: 'text', metadata: part.metadata })).toEqual(payload);
+    });
+
+    test('rejects an empty, oversized, or malformed file list', () => {
+        const read = (files: unknown) => readContextPart({ type: 'text', metadata: { [CONTEXT_METADATA_KEY]: { kind: 'saved-files', files } } });
+        const entry = { path: '/home/dev/uploads/x.bin', name: 'x.bin', diskOnly: true };
+        expect(read([])).toBeNull();
+        expect(read(Array.from({ length: 51 }, () => entry))).toBeNull();
+        expect(read([{ ...entry, diskOnly: 'yes' }])).toBeNull();
+        expect(read([{ ...entry, path: '' }])).toBeNull();
+    });
+});

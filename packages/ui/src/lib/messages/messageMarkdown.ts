@@ -51,6 +51,7 @@ function formatContext(payload: ContextPartPayload, originalText: string, fieldL
     case 'linear-issue':
     case 'guest-issue':
     case 'guest-pr':
+    case 'saved-files':
       return fieldLimit ? excerptMarkdown(originalText, fieldLimit) : originalText;
   }
 }

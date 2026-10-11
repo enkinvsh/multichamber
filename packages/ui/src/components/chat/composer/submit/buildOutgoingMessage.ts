@@ -56,6 +56,11 @@ export interface ComposerContextInput {
     inlineComments: readonly InlineCommentDraft[];
     /** Synthetic context produced elsewhere (conflict resolution, and such). */
     syntheticTexts: readonly string[];
+    /**
+     * Готовые context-части, собранные вне черновиков (сохранённые на диск
+     * вложения). Идут сразу за syntheticTexts, чтобы порядок для модели не сдвинулся.
+     */
+    syntheticContext?: readonly { text: string; metadata: ContextPartMetadata }[];
     linkedIssue: { number: number; title: string; url: string; contextText: string } | null;
     linkedPr: { number: number; title: string; url: string; instructions: string; context: string } | null;
     linkedLinearIssue: { identifier: string; title: string; url: string; contextText: string } | null;
@@ -198,6 +203,10 @@ export function buildComposerContext(
 
     for (const text of input.syntheticTexts) {
         context.push({ kind: 'synthetic', text });
+    }
+
+    for (const part of input.syntheticContext ?? []) {
+        attach(part);
     }
 
     if (input.linkedIssue) {

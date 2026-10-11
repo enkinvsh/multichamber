@@ -75,6 +75,7 @@ const chatAttachmentsEn = {
   'multichamber.chat.attachments.saveFailed': 'Could not save “{name}”: {message}',
   'multichamber.chat.attachments.homeUnknown': 'Could not find your home folder. Reload the page and try again',
   'multichamber.chat.attachments.diskOnly': 'Will be saved to ~/uploads, the agent opens it from disk',
+  'multichamber.chat.attachments.savedPreview': 'Attachments: {names}',
 } as const;
 
 const chatAttachmentsRu: Record<keyof typeof chatAttachmentsEn, string> = {
@@ -84,6 +85,7 @@ const chatAttachmentsRu: Record<keyof typeof chatAttachmentsEn, string> = {
   'multichamber.chat.attachments.saveFailed': 'Не удалось сохранить «{name}»: {message}',
   'multichamber.chat.attachments.homeUnknown': 'Не удалось найти домашнюю папку. Обновите страницу и попробуйте снова',
   'multichamber.chat.attachments.diskOnly': 'Сохранится в ~/uploads, агент откроет файл с диска',
+  'multichamber.chat.attachments.savedPreview': 'Вложения: {names}',
 };
 
 const en = {

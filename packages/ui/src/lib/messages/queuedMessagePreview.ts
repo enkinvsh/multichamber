@@ -22,6 +22,8 @@ function contextPreview(payload: ContextPartPayload): string {
         case 'guest-issue':
         case 'guest-pr':
             return payload.title.trim() || payload.url;
+        case 'saved-files':
+            return payload.files.map((file) => file.name).join(', ');
     }
 }
 

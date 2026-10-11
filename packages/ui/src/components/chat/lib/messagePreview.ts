@@ -62,6 +62,8 @@ const contextSummary = (payload: ContextPartPayload, t: Translate): string => {
         case 'guest-issue':
         case 'guest-pr':
             return `${payload.id} ${payload.title}`;
+        case 'saved-files':
+            return t('multichamber.chat.attachments.savedPreview', { names: payload.files.map((file) => file.name).join(', ') });
     }
 };
 
@@ -86,6 +88,7 @@ const contextBody = (payload: ContextPartPayload): string => {
         case 'linear-issue':
         case 'guest-issue':
         case 'guest-pr':
+        case 'saved-files':
             return '';
     }
 };

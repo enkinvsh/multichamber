@@ -15,7 +15,7 @@ import {
     isDocumentAttachmentFilename,
     type AttachmentInputModality,
 } from '@/sync/attachment-files';
-import { describeUploadFailure, saveAttachmentsToDisk, buildSavedAttachmentsNotice } from '@/sync/attachment-disk';
+import { describeUploadFailure, saveAttachmentsToDisk, buildSavedAttachmentsContextPart } from '@/sync/attachment-disk';
 import { formatHumanSize } from '@/hooks/useFilesPanelActions';
 import type { AttachedFile } from '@/stores/types/sessionTypes';
 import * as sessionActions from '@/sync/session-actions';
@@ -57,7 +57,7 @@ import { cn } from "@/lib/utils";
 import { ModelControls } from './ModelControls';
 import { focusChatInput } from './composer/editor/dom';
 import { parseAgentMentions } from '@/lib/messages/agentMentions';
-import { CONTEXT_METADATA_KEY, draftFromContextPayload } from '@/lib/messages/contextParts';
+import { CONTEXT_METADATA_KEY, draftFromContextPayload, type ContextPart } from '@/lib/messages/contextParts';
 import { ComposerStatusBar } from './ComposerStatusBar';
 import { shouldSubmitEnter } from './composer/keyboardPolicy';
 import { getDropdownNavigationKey } from '@/components/ui/dropdown-navigation';
@@ -829,13 +829,13 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     const savingAttachmentsRef = React.useRef(false);
 
     /**
-     * Сохраняет файлы пользователя в ~/uploads до отправки и возвращает текст
-     * с путями для агента. При сбое сообщение не уходит: черновик и вложения
+     * Сохраняет файлы пользователя в ~/uploads до отправки и возвращает
+     * context-часть с путями для агента. При сбое сообщение не уходит: черновик и вложения
      * остаются в композере, а причина показывается тостом.
      */
     const saveAttachmentsBeforeSend = React.useCallback(async (
         files: readonly AttachedFile[],
-    ): Promise<{ ok: true; notice: string | null } | { ok: false }> => {
+    ): Promise<{ ok: true; notice: ContextPart | null } | { ok: false }> => {
         if (!files.some((file) => file.diskFile)) return { ok: true, notice: null };
         if (!runtimeFiles.uploadFile) return { ok: true, notice: null };
         if (savingAttachmentsRef.current) return { ok: false };
@@ -860,7 +860,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                     return runtimeFiles.uploadFile(path, file, options);
                 },
             });
-            if (result.ok) return { ok: true, notice: buildSavedAttachmentsNotice(result.saved) };
+            if (result.ok) return { ok: true, notice: buildSavedAttachmentsContextPart(result.saved) };
 
             const failure = describeUploadFailure(result.error);
             const name = result.file.name;
@@ -1332,8 +1332,9 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         const linked: LinkedReferences = { issue: linkedIssue, pr: linkedPr, linear: linkedLinearIssue };
         const context = buildComposerContext({
             inlineComments: drafts,
-            syntheticTexts: [
-                ...syntheticParts.map((part) => part.text),
+            syntheticTexts: syntheticParts.flatMap((part) => part.metadata ? [] : [part.text]),
+            syntheticContext: [
+                ...syntheticParts.flatMap((part) => part.metadata ? [{ text: part.text, metadata: part.metadata }] : []),
                 ...(diskSave.notice ? [diskSave.notice] : []),
             ],
             linkedIssue: linked.issue
@@ -1476,6 +1477,10 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                 setLinkedIssue(null);
                 setLinkedPr(null);
                 setLinkedLinearIssue(null);
+            } else if (payload.kind === 'saved-files') {
+                // Файлы уже на диске и из композера ушли: возвращаем заметку как
+                // ожидающую часть, чтобы агент и пузырь получили её с новой отправкой.
+                synthetic.push({ text: part.text, synthetic: true, metadata: part.metadata });
             } else {
                 const draft = draftFromContextPayload(payload);
                 if (draft && inlineDraftTarget) {
@@ -1840,7 +1845,12 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
             inlineComments: drafts,
             syntheticTexts: [
                 ...buildBtwSyntheticTexts({ isBtwActive, isPromotedBtwSession }),
-                ...(syntheticParts?.map((part) => part.text) ?? []),
+                ...(syntheticParts?.flatMap((part) => part.metadata ? [] : [part.text]) ?? []),
+            ],
+            // Части с метаданными (вернувшиеся из очереди вложения) сохраняют их,
+            // иначе пузырь потеряет чипы файлов при повторной отправке.
+            syntheticContext: [
+                ...(syntheticParts?.flatMap((part) => part.metadata ? [{ text: part.text, metadata: part.metadata }] : []) ?? []),
                 ...(diskSave.notice ? [diskSave.notice] : []),
             ],
             linkedIssue: !isBtwActive && linkedIssue

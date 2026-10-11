@@ -2,9 +2,13 @@ import React from 'react';
 
 import { Icon } from '@/components/icon/Icon';
 import type { IconName } from '@/components/icon/icons';
+import { FileTypeIcon } from '@/components/icons/FileTypeIcon';
+import { useEffectiveDirectory } from '@/hooks/useEffectiveDirectory';
 import { useI18n } from '@/lib/i18n';
-import type { ContextPartPayload } from '@/lib/messages/contextParts';
+import type { ContextPartPayload, SavedFilesContext } from '@/lib/messages/contextParts';
+import { getDirectoryForFilePath } from '@/lib/path-utils';
 import { cn } from '@/lib/utils';
+import { useUIStore } from '@/stores/useUIStore';
 
 /**
  * A context item attached to a user message: an inline code comment, a
@@ -95,6 +99,38 @@ const ContextCard: React.FC<{
 const basename = (path: string): string => {
     const segments = path.split('/').filter(Boolean);
     return segments[segments.length - 1] ?? path;
+};
+
+/**
+ * Чипы файлов, сохранённых в ~/uploads. Показываем только «только на диске»:
+ * остальные уже есть в пузыре file-частями, повтор был бы шумом.
+ */
+const SavedFilesChips: React.FC<{ files: SavedFilesContext['files'] }> = ({ files }) => {
+    const openContextFile = useUIStore((state) => state.openContextFile);
+    const effectiveDirectory = useEffectiveDirectory();
+    const diskOnly = files.filter((file) => file.diskOnly);
+    if (diskOnly.length === 0) return null;
+
+    return (
+        <div className="my-1.5 flex min-w-0 max-w-full flex-wrap gap-1.5 border-l-2 border-[var(--interactive-border)] pl-3">
+            {diskOnly.map((file) => (
+                <button
+                    key={file.path}
+                    type="button"
+                    title={file.path}
+                    className="flex min-w-0 max-w-full items-center gap-1.5 rounded-md bg-[var(--surface-muted)] px-2 py-0.5 text-xs text-[var(--surface-foreground)] hover:bg-[var(--interactive-hover)]"
+                    onClick={(event) => {
+                        // Клик не должен заодно сворачивать или разворачивать сообщение.
+                        event.stopPropagation();
+                        openContextFile(effectiveDirectory || getDirectoryForFilePath('', file.path) || '/', file.path);
+                    }}
+                >
+                    <FileTypeIcon filePath={file.path} className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">{file.name}</span>
+                </button>
+            ))}
+        </div>
+    );
 };
 
 const UserContextPart: React.FC<{
@@ -190,6 +226,8 @@ const UserContextPart: React.FC<{
         case 'guest-pr':
             // Rendered as link attachments by normalizeUserDisplayParts.
             return null;
+        case 'saved-files':
+            return <SavedFilesChips files={payload.files} />;
     }
 };
 

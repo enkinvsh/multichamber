@@ -204,6 +204,19 @@ describe('context drafts', () => {
             .toEqual(['comment', 'conflict note']);
     });
 
+    test('ready-made context parts follow plain synthetic text and keep their metadata', () => {
+        const metadata = { [CONTEXT_METADATA_KEY]: { kind: 'saved-files' as const, files: [{ path: '/h/uploads/a.zip', name: 'a.zip', diskOnly: true }] } };
+        const result = buildOutgoingMessage(input({
+            composerText: 'body',
+            syntheticTexts: ['conflict note'],
+            syntheticContext: [{ text: 'saved notice', metadata }],
+        }), deps());
+        expect(result.additionalParts).toEqual([
+            { text: 'conflict note', synthetic: true },
+            { text: 'saved notice', synthetic: true, metadata },
+        ]);
+    });
+
     test('no drafts changes nothing', () => {
         expect(buildOutgoingMessage(input({ composerText: 'body' }), deps()).additionalParts)
             .toEqual([]);

@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test"
 import { FilesystemError } from "@/lib/api/files-errors"
+import { readContextPart } from "@/lib/messages/contextParts"
 import {
   MODEL_ATTACHMENT_MAX_BYTES,
+  buildSavedAttachmentsContextPart,
   buildSavedAttachmentsNotice,
   buildUploadPath,
   classifyAttachmentDestination,
@@ -66,6 +68,39 @@ describe("buildSavedAttachmentsNotice", () => {
 
   test("returns null when nothing was saved", () => {
     expect(buildSavedAttachmentsNotice([])).toBeNull()
+  })
+})
+
+describe("buildSavedAttachmentsContextPart", () => {
+  test("sends the unchanged notice to the model and file names to the bubble", () => {
+    const saved = [
+      { path: "/home/dev/uploads/a.png", diskOnly: false },
+      { path: "/home/dev/uploads/отчёт (2).zip", diskOnly: true },
+    ]
+    const part = buildSavedAttachmentsContextPart(saved)
+
+    expect(part?.text).toBe(buildSavedAttachmentsNotice(saved) ?? "")
+    expect(part?.synthetic).toBe(true)
+    expect(part && readContextPart({ type: "text", metadata: part.metadata })).toEqual({
+      kind: "saved-files",
+      files: [
+        { path: "/home/dev/uploads/a.png", name: "a.png", diskOnly: false },
+        { path: "/home/dev/uploads/отчёт (2).zip", name: "отчёт (2).zip", diskOnly: true },
+      ],
+    })
+  })
+
+  test("caps the metadata list but keeps every path in the notice", () => {
+    const saved = Array.from({ length: 60 }, (_, index) => ({ path: `/h/uploads/f${index}.bin`, diskOnly: true }))
+    const part = buildSavedAttachmentsContextPart(saved)
+    const payload = part && readContextPart({ type: "text", metadata: part.metadata })
+
+    expect(payload?.kind === "saved-files" ? payload.files.length : 0).toBe(50)
+    expect(part?.text).toContain("- /h/uploads/f59.bin")
+  })
+
+  test("returns null when nothing was saved", () => {
+    expect(buildSavedAttachmentsContextPart([])).toBeNull()
   })
 })
 

@@ -1,4 +1,5 @@
 import { isFilesystemError } from "@/lib/api/files-errors"
+import { SAVED_FILES_LIMIT, createContextPart, type ContextPart } from "@/lib/messages/contextParts"
 import { isDocumentAttachmentFilename } from "./attachment-files"
 
 // Порог из ТЗ zeny: крупнее этого модель вложение не получает, только диск —
@@ -58,13 +59,28 @@ export const buildUploadPath = (homeDirectory: string, filename: string): string
 
 export type SavedAttachment = { readonly path: string; readonly diskOnly: boolean }
 
-/** Текст для агента: модель видит его как синтетическую часть, пользователь — нет. */
+/** Текст для агента; пузырь пользователя рисуется по метаданным context-части, а не по нему. */
 export const buildSavedAttachmentsNotice = (saved: readonly SavedAttachment[]): string | null => {
   if (saved.length === 0) return null
   const lines = saved.map(({ path, diskOnly }) => diskOnly
     ? `- ${path} (только на диске, содержимое в сообщение не вложено — открой файл)`
     : `- ${path}`)
   return `Вложения сохранены на диск:\n${lines.join("\n")}`
+}
+
+/**
+ * Та же заметка, но context-частью: модель читает прежний текст, а метаданные
+ * дают пузырю пользователя показать файлы, которые не ушли file-частью.
+ */
+export const buildSavedAttachmentsContextPart = (saved: readonly SavedAttachment[]): ContextPart | null => {
+  const notice = buildSavedAttachmentsNotice(saved)
+  if (notice === null) return null
+  const files = saved.slice(0, SAVED_FILES_LIMIT).map(({ path, diskOnly }) => ({
+    path,
+    name: path.split(/[\\/]/).pop() || path,
+    diskOnly,
+  }))
+  return createContextPart({ kind: "saved-files", files }, notice)
 }
 
 export type UploadFailure =

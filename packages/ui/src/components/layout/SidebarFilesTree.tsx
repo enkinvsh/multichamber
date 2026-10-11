@@ -47,6 +47,7 @@ import { Icon } from "@/components/icon/Icon";
 import { getContextFileOpenFailureMessage, validateContextFileOpen } from '@/lib/contextFileOpenGuard';
 import { isFilesystemError } from '@/lib/api/files-errors';
 import { notifyDiskUsageChanged, useDownloadDirectory, useFilesUpload } from '@/hooks/useFilesPanelActions';
+import { DiskUsageLine } from '@/components/views/files/DiskUsageLine';
 import { notifyFileContentInvalidated } from '@/lib/fileContentInvalidation';
 import { isBrowserClientRuntime } from '@/lib/desktop';
 import { useI18n } from '@/lib/i18n';
@@ -1568,6 +1569,7 @@ const SidebarFilesTreeContent: React.FC<{ visible: boolean }> = ({ visible }) =>
           </div>
         ) : null}
       </div>
+      <DiskUsageLine path={root} className="shrink-0 border-t border-border/40 px-3 py-1.5" />
 
       <Dialog open={Boolean(uploadConflicts)} onOpenChange={(open: boolean) => !open && setUploadConflicts(null)}>
         <DialogContent>

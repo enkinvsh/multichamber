@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import type { Part } from '@opencode-ai/sdk/v2'
+import type { I18nParams } from '@/lib/i18n'
 import { CONTEXT_METADATA_KEY, type ContextPartPayload } from '@/lib/messages/contextParts'
 import { getFullText, getMessagePreview, getPromptPreviewText } from './messagePreview'
 
@@ -19,7 +20,11 @@ const contextPart = (payload: ContextPartPayload, text: string): Part => ({
 
 const chatQuote = (quote: string, text = ''): ContextPartPayload => ({ kind: 'chat-quote', quote, text })
 
-const t = (key: string): string => (key === 'chat.message.context.chatQuote' ? 'Quoted from an earlier message' : key)
+const t = (key: string, params?: I18nParams): string => {
+  if (key === 'chat.message.context.chatQuote') return 'Quoted from an earlier message'
+  if (key === 'multichamber.chat.attachments.savedPreview') return `Attachments: ${String(params?.names)}`
+  return key
+}
 
 describe('messagePreview', () => {
   test('joins text parts for full text', () => {
@@ -63,5 +68,19 @@ describe('messagePreview', () => {
       'fetched issue body',
     )]
     expect(getPromptPreviewText(parts, t)).toBe('ENG-12 Fix login')
+  })
+
+  test('labels an attachments-only message with the saved file names', () => {
+    const parts = [contextPart(
+      {
+        kind: 'saved-files',
+        files: [
+          { path: '/home/dev/uploads/qa.zip', name: 'qa.zip', diskOnly: true },
+          { path: '/home/dev/uploads/отчёт.xlsx', name: 'отчёт.xlsx', diskOnly: false },
+        ],
+      },
+      'notice for the model',
+    )]
+    expect(getPromptPreviewText(parts, t)).toBe('Attachments: qa.zip, отчёт.xlsx')
   })
 })
