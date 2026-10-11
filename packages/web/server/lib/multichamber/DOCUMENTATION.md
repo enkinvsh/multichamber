@@ -32,7 +32,7 @@ Legit zeny callers that pass: the master Caddy (`Host: app.ai.meybz.asia`, Caddy
 
 ## Policy endpoint
 
-`GET /api/multichamber/policy` returns `{ lockdown: boolean, fsRoot: string | null, previewOpenUrl: string | null }` (`lockdown` is `MULTICHAMBER_LOCKDOWN === '1'`, `fsRoot` is the trimmed `MULTICHAMBER_FS_ROOT`, `previewOpenUrl` is `MULTICHAMBER_PREVIEW_OPEN_URL` when it is an absolute `https:` URL without credentials, else `null`; the UI treats a missing field as `null`). The UI reads it once (`packages/ui/src/lib/multichamber/lockdown.ts`); a `404` means a plain OpenChamber server and leaves everything unlocked.
+`GET /api/multichamber/policy` returns `{ lockdown: boolean, fsRoot: string | null, previewOpenUrl: string | null, dictation: boolean }` (`lockdown` is `MULTICHAMBER_LOCKDOWN === '1'`, `fsRoot` is the trimmed `MULTICHAMBER_FS_ROOT`, `previewOpenUrl` is `MULTICHAMBER_PREVIEW_OPEN_URL` when it is an absolute `https:` URL without credentials, else `null`; the UI treats a missing field as `null`; `dictation` is true when managed STT is configured — `MULTICHAMBER_STT_BASE_URL`, see `managed-stt.js` and `../dictation/DOCUMENTATION.md` — and lets the locked-down composer show the mic; the UI treats a missing field as `false`). The UI reads it once (`packages/ui/src/lib/multichamber/lockdown.ts`); a `404` means a plain OpenChamber server and leaves everything unlocked.
 
 ## Preview proxy
 

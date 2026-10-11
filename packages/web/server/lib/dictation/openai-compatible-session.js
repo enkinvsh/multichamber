@@ -21,7 +21,7 @@ const OPENAI_COMPATIBLE_SAMPLE_RATE = 16000;
 
 export class OpenAICompatibleTranscriptionSession extends EventEmitter {
   /**
-   * @param {{ baseURL: string, model: string, apiKey?: string, language?: string, prompt?: string }} config
+   * @param {{ baseURL: string, model: string, apiKey?: string, language?: string, prompt?: string, allowRemoteBaseURL?: boolean }} config
    */
   constructor(config) {
     super();
@@ -75,6 +75,7 @@ export class OpenAICompatibleTranscriptionSession extends EventEmitter {
           baseURL: this.config.baseURL,
           apiKey: this.config.apiKey,
           language: this.config.language,
+          allowRemoteBaseURL: this.config.allowRemoteBaseURL,
         });
         this.emit('transcript', {
           segmentId: committedId,

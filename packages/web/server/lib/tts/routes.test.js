@@ -141,6 +141,15 @@ describe('normalizeCustomOpenAIBaseURL', () => {
     expect(result.value).toBe('https://my-tts-server.example.com/v1');
   });
 
+  it('allows a remote URL the operator configured even with the flag off', () => {
+    delete process.env.OPENCHAMBER_RUNTIME;
+    process.env.OPENCHAMBER_ALLOW_REMOTE_OPENAI_COMPAT_URLS = 'false';
+
+    const result = normalizeCustomOpenAIBaseURL('http://10.88.0.1:8317/v1/', { allowRemote: true });
+    expect(result.error).toBeUndefined();
+    expect(result.value).toBe('http://10.88.0.1:8317/v1');
+  });
+
   it('allows localhost URLs regardless of runtime', () => {
     delete process.env.OPENCHAMBER_RUNTIME;
     delete process.env.OPENCHAMBER_ALLOW_REMOTE_OPENAI_COMPAT_URLS;

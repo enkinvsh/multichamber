@@ -18,16 +18,18 @@ import { isWebRuntime } from '@/lib/desktop';
 import { isFilePathWithinDirectory } from '@/lib/path-utils';
 import { runtimeFetch } from '@/lib/runtime-fetch';
 
-const policySchema = z.object({
+export const multichamberPolicySchema = z.object({
   lockdown: z.boolean(),
   fsRoot: z.string().nullable(),
   // Старый сервер MultiChamber поля не знает: отсутствие значит «превью выключено», а не сбой политики.
   previewOpenUrl: z.string().nullish().transform((value) => value ?? null),
+  // Старый сервер не присылает поле: без него серверного STT нет, и в lockdown микрофон остаётся скрыт.
+  dictation: z.boolean().nullish().transform((value) => value ?? false),
 });
 
-type MultichamberPolicy = z.output<typeof policySchema>;
+type MultichamberPolicy = z.output<typeof multichamberPolicySchema>;
 
-const UNMANAGED_POLICY: MultichamberPolicy = { lockdown: false, fsRoot: null, previewOpenUrl: null };
+const UNMANAGED_POLICY: MultichamberPolicy = { lockdown: false, fsRoot: null, previewOpenUrl: null, dictation: false };
 
 /** `unknown`: no answer yet; `failed`: last request failed, retried on demand. */
 type PolicyStatus = 'unknown' | 'loaded' | 'failed';
@@ -51,7 +53,7 @@ const fetchPolicy = async (): Promise<MultichamberPolicy> => {
   const response = await runtimeFetch('/api/multichamber/policy', { cache: 'no-store' });
   if (response.status === 404) return UNMANAGED_POLICY;
   if (!response.ok) throw new Error(`MultiChamber policy request failed (${response.status})`);
-  return policySchema.parse(await response.json());
+  return multichamberPolicySchema.parse(await response.json());
 };
 
 /** Loads the policy once; concurrent callers share one request. */
@@ -97,7 +99,7 @@ export const useMultichamberLockdownConfirmed = (): boolean =>
 
 /** Test seam: pins a loaded policy so store tests run against a known lockdown. */
 export const setMultichamberLockdownForTests = (lockdown: boolean): void => {
-  useMultichamberPolicyStore.setState({ policy: { lockdown, fsRoot: null, previewOpenUrl: null }, status: 'loaded' });
+  useMultichamberPolicyStore.setState({ policy: { lockdown, fsRoot: null, previewOpenUrl: null, dictation: false }, status: 'loaded' });
 };
 
 /** Non-reactive read for stores and callbacks. */
@@ -128,7 +130,7 @@ export const useMultichamberFsRoot = (): string | null => {
 
 /** Тестовый шов: загруженная политика с заданным корнем файлов. */
 export const setMultichamberFsRootForTests = (fsRoot: string | null): void => {
-  useMultichamberPolicyStore.setState({ policy: { lockdown: fsRoot !== null, fsRoot, previewOpenUrl: null }, status: 'loaded' });
+  useMultichamberPolicyStore.setState({ policy: { lockdown: fsRoot !== null, fsRoot, previewOpenUrl: null, dictation: false }, status: 'loaded' });
 };
 
 /**
@@ -152,5 +154,35 @@ export const useMultichamberPreviewOpenUrl = (): string | null => {
 
 /** Тестовый шов: lockdown с настроенным (или выключенным) приватным превью. */
 export const setMultichamberPreviewOpenUrlForTests = (previewOpenUrl: string | null): void => {
-  useMultichamberPolicyStore.setState({ policy: { lockdown: true, fsRoot: null, previewOpenUrl }, status: 'loaded' });
+  useMultichamberPolicyStore.setState({ policy: { lockdown: true, fsRoot: null, previewOpenUrl, dictation: false }, status: 'loaded' });
 };
+
+/**
+ * Сервер сам распознаёт речь (MULTICHAMBER_STT_BASE_URL) и подменяет провайдера,
+ * поэтому в lockdown микрофон можно показать без экрана настроек голоса.
+ * Пока политика не загружена — false: lockdown по умолчанию закрыт.
+ */
+export const useMultichamberDictation = (): boolean => {
+  const dictation = useMultichamberPolicyStore((state) => state.status === 'loaded' && state.policy.dictation);
+  const loaded = useMultichamberPolicyStore((state) => state.status === 'loaded');
+  React.useEffect(() => {
+    if (!loaded) void loadMultichamberPolicy();
+  }, [loaded]);
+  return dictation;
+};
+
+/** Тестовый шов: lockdown с серверным STT (или без него). */
+export const setMultichamberDictationForTests = (dictation: boolean): void => {
+  useMultichamberPolicyStore.setState({ policy: { lockdown: true, fsRoot: null, previewOpenUrl: null, dictation }, status: 'loaded' });
+};
+
+/** Правило показа микрофона в композере; вынесено чистой функцией ради тестов. */
+export const isComposerDictationAllowed = ({
+  preference,
+  lockdown,
+  managedDictation,
+}: {
+  preference: boolean;
+  lockdown: boolean;
+  managedDictation: boolean;
+}): boolean => preference && (!lockdown || managedDictation);

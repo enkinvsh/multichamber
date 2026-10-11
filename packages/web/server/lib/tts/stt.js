@@ -18,10 +18,11 @@ import { normalizeCustomOpenAIBaseURL } from './base-url.js';
  * @param {string} [opts.baseURL]    - Base URL of the compatible server (including /v1)
  * @param {string} [opts.apiKey]     - Optional API key for the compatible server
  * @param {string} [opts.language]   - Optional BCP-47 language hint (e.g. 'en')
+ * @param {boolean} [opts.allowRemoteBaseURL] - адрес задан оператором сервера, запрет удалённых хостов не действует
  * @returns {Promise<string>} Transcribed text
  */
-export async function transcribeAudio({ audioBuffer, mimeType, model, baseURL, apiKey, language }) {
-  const normalizedBaseURLResult = normalizeCustomOpenAIBaseURL(baseURL);
+export async function transcribeAudio({ audioBuffer, mimeType, model, baseURL, apiKey, language, allowRemoteBaseURL }) {
+  const normalizedBaseURLResult = normalizeCustomOpenAIBaseURL(baseURL, { allowRemote: allowRemoteBaseURL === true });
   if (normalizedBaseURLResult.error) {
     throw new Error(normalizedBaseURLResult.error);
   }

@@ -13,13 +13,18 @@ afterEach(() => {
 describe('readMultichamberPolicy', () => {
   it('reports lockdown and the fs root from the environment', () => {
     expect(readMultichamberPolicy({ MULTICHAMBER_LOCKDOWN: '1', MULTICHAMBER_FS_ROOT: ' /home/dev ' }))
-      .toEqual({ lockdown: true, fsRoot: '/home/dev', previewOpenUrl: null });
+      .toEqual({ lockdown: true, fsRoot: '/home/dev', previewOpenUrl: null, dictation: false });
   });
 
   it('reports no lockdown and no root when the variables are missing or blank', () => {
-    expect(readMultichamberPolicy({})).toEqual({ lockdown: false, fsRoot: null, previewOpenUrl: null });
+    expect(readMultichamberPolicy({})).toEqual({ lockdown: false, fsRoot: null, previewOpenUrl: null, dictation: false });
     expect(readMultichamberPolicy({ MULTICHAMBER_LOCKDOWN: 'true', MULTICHAMBER_FS_ROOT: '  ' }))
-      .toEqual({ lockdown: false, fsRoot: null, previewOpenUrl: null });
+      .toEqual({ lockdown: false, fsRoot: null, previewOpenUrl: null, dictation: false });
+  });
+
+  it('reports dictation only when a valid managed STT endpoint is configured', () => {
+    expect(readMultichamberPolicy({ MULTICHAMBER_LOCKDOWN: '1', MULTICHAMBER_STT_BASE_URL: 'http://10.88.0.1:8317/v1' }).dictation).toBe(true);
+    expect(readMultichamberPolicy({ MULTICHAMBER_LOCKDOWN: '1', MULTICHAMBER_STT_BASE_URL: 'ftp://10.88.0.1/v1' }).dictation).toBe(false);
   });
 
   it('reports the preview open url only for an absolute https url', () => {
@@ -54,5 +59,21 @@ describe('update checks in lockdown', () => {
   it('leaves the stock routes in place without lockdown', async () => {
     const response = await request(appWith({})).get('/api/openchamber/update-check');
     expect(response.body).toEqual({ available: true, from: 'upstream' });
+  });
+});
+
+describe('policy route', () => {
+  const policyOf = async (env) => {
+    const app = express();
+    installMultichamber(app, 'early', { env });
+    return (await request(app).get('/api/multichamber/policy')).body;
+  };
+
+  it('reports dictation when managed STT is configured', async () => {
+    expect((await policyOf({ MULTICHAMBER_LOCKDOWN: '1', MULTICHAMBER_STT_BASE_URL: 'http://10.88.0.1:8317/v1' })).dictation).toBe(true);
+  });
+
+  it('reports no dictation without managed STT', async () => {
+    expect((await policyOf({ MULTICHAMBER_LOCKDOWN: '1' })).dictation).toBe(false);
   });
 });

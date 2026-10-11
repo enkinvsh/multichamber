@@ -6,6 +6,7 @@ import { registerMultichamberBudgetRoute } from './budget.js';
 import { createDevServerOwnershipFilter } from './dev-server-ownership.js';
 import { createFsRootGuard } from './fs-root-guard.js';
 import { createLockdownGuard, createLockdownSettingsFilter, isLockdownEnabled } from './lockdown-guard.js';
+import { readManagedStt } from './managed-stt.js';
 import { createLockdownProjectGuard } from './project-guard.js';
 
 const MULTICHAMBER_POLICY_ROUTE = '/api/multichamber/policy';
@@ -34,8 +35,9 @@ const readPreviewOpenUrl = (raw) => {
 
 /**
  * Что UI нужно знать об этом контейнере MultiChamber.
+ * `dictation`: диктовка идёт через управляемый STT, и UI показывает микрофон даже в lockdown.
  * @param {NodeJS.ProcessEnv} env
- * @returns {{ lockdown: boolean, fsRoot: string | null, previewOpenUrl: string | null }}
+ * @returns {{ lockdown: boolean, fsRoot: string | null, previewOpenUrl: string | null, dictation: boolean }}
  */
 export const readMultichamberPolicy = (env = process.env) => {
   const fsRoot = rootSchema.parse(env.MULTICHAMBER_FS_ROOT);
@@ -43,6 +45,7 @@ export const readMultichamberPolicy = (env = process.env) => {
     lockdown: isLockdownEnabled(env),
     fsRoot: fsRoot.length > 0 ? fsRoot : null,
     previewOpenUrl: readPreviewOpenUrl(env.MULTICHAMBER_PREVIEW_OPEN_URL),
+    dictation: readManagedStt(env) !== null,
   };
 };
 

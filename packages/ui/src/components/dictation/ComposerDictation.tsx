@@ -23,7 +23,7 @@ import { DictationWaveform } from '@/components/dictation/DictationWaveform';
 import { isDictationCaptureSupported } from '@/lib/dictation/use-dictation-audio-source';
 import { isVSCodeRuntime } from '@/lib/desktop';
 import { useConfigStore } from '@/stores/useConfigStore';
-import { useMultichamberLockdown } from '@/lib/multichamber/lockdown';
+import { isComposerDictationAllowed, useMultichamberDictation, useMultichamberLockdown } from '@/lib/multichamber/lockdown';
 import { useUIStore } from '@/stores/useUIStore';
 import { formatShortcutForDisplay, getEffectiveShortcutCombo } from '@/lib/shortcuts';
 
@@ -125,7 +125,12 @@ export const ComposerDictation: React.FC<ComposerDictationProps> = ({
     const { currentTheme } = useThemeSystem();
     const dictationPreference = useConfigStore((state) => state.dictationEnabled);
     const multichamberLockdown = useMultichamberLockdown();
-    const dictationEnabled = dictationPreference && !multichamberLockdown;
+    const multichamberDictation = useMultichamberDictation();
+    const dictationEnabled = isComposerDictationAllowed({
+        preference: dictationPreference,
+        lockdown: multichamberLockdown,
+        managedDictation: multichamberDictation,
+    });
     const shortcutOverrides = useUIStore((state) => state.shortcutOverrides);
     const dictationShortcut = formatShortcutForDisplay(getEffectiveShortcutCombo('toggle_dictation', shortcutOverrides));
     // The dictation server (WebSocket + STT worker) lives in the OpenChamber

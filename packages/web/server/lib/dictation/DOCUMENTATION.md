@@ -58,6 +58,31 @@ response carries `X-Speech-Model` and `X-Speech-Language`.
 - `audio.js` — PCM16 helpers: format parsing, peak, WAV wrapping, streaming
   linear resampler.
 
+## Managed STT (MultiChamber)
+
+When the server process has `MULTICHAMBER_STT_BASE_URL` set to an absolute
+`http(s)` URL, `runtime.js` passes `readManagedStt(process.env)`
+(`../multichamber/managed-stt.js`) to `createDictationService({ managedStt })`
+and every session uses `openai-compatible` with the server values:
+
+| Env | Meaning | Default |
+| --- | --- | --- |
+| `MULTICHAMBER_STT_BASE_URL` | OpenAI-compatible base URL (`…/v1`) | unset → managed STT off |
+| `MULTICHAMBER_STT_MODEL` | `model` form field | `parakeet-tdt-0.6b-v3` |
+| `MULTICHAMBER_STT_KEY` | Bearer key | `MULTICHAMBER_LLM_KEY`, else `not-required` |
+
+Precedence: managed config wins over everything the client sends —
+`provider`, `localModel` and `openaiCompatible.{baseUrl,apiKey,model}` are
+ignored; only `language` passes through. The local Parakeet worker and model
+downloads are never touched, and `getStatus()` reports the managed
+`openai-compatible` provider as available. The operator-set URL skips the
+loopback-only host check of `../tts/base-url.js` (`allowRemote`); client URLs
+still go through it. The key never falls back to the server `OPENAI_API_KEY`.
+`GET /api/multichamber/policy` exposes `dictation: true` so the locked-down UI
+shows the mic. An invalid or non-`http(s)` URL disables managed STT; dictation then
+behaves as upstream (and lockdown hides the mic). Upstream errors (`503`, `413`, `429`) surface as a normal
+retryable stream `error` after the OpenAI SDK's bounded retries.
+
 ## WebSocket protocol (JSON text frames)
 
 Client → server: `start {dictationId, format, options}`,

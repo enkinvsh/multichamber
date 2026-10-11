@@ -30,7 +30,12 @@ import {
 } from './local/model-catalog.js';
 import { ensureLocalSttModel, isLocalSttModelInstalled } from './local/model-downloader.js';
 
-export function createDictationService({ modelsDir }) {
+/**
+ * @param {{ modelsDir: string, managedStt?: { baseUrl: string, model: string, apiKey: string } | null }} deps
+ *   `managedStt`: STT, заданный оператором (MultiChamber). Если он есть, клиентский
+ *   выбор провайдера игнорируется, а локальные модели не качаются и не запускаются.
+ */
+export function createDictationService({ modelsDir, managedStt = null }) {
   const workerClient = new DictationWorkerClient();
   /** modelId -> 'downloading' | 'error' */
   const downloadStates = new Map();
@@ -87,15 +92,16 @@ export function createDictationService({ modelsDir }) {
    *           openaiCompatible?: { baseUrl?: string, model?: string, apiKey?: string } }} options
    */
   const createSttSession = async (options = {}) => {
-    const provider = options.provider === 'openai-compatible' ? 'openai-compatible' : 'local';
+    const provider = managedStt || options.provider === 'openai-compatible' ? 'openai-compatible' : 'local';
 
     if (provider === 'openai-compatible') {
-      const config = options.openaiCompatible || {};
+      const config = managedStt || options.openaiCompatible || {};
       const session = new OpenAICompatibleTranscriptionSession({
         baseURL: config.baseUrl,
         model: config.model,
         apiKey: config.apiKey || undefined,
         language: options.language || undefined,
+        allowRemoteBaseURL: Boolean(managedStt),
       });
       try {
         await session.connect();
@@ -162,7 +168,7 @@ export function createDictationService({ modelsDir }) {
    * @param {{ provider?: string, localModel?: string }} [options]
    */
   const getStatus = async (options = {}) => {
-    const provider = options.provider === 'openai-compatible' ? 'openai-compatible' : 'local';
+    const provider = managedStt || options.provider === 'openai-compatible' ? 'openai-compatible' : 'local';
     const modelId = resolveLocalModelId(options.localModel);
 
     const describeModel = async (id, catalog) => ({

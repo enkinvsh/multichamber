@@ -27,7 +27,13 @@ const isAllowedLocalHost = (hostname) => {
   return LOCAL_BASE_URL_HOSTS.has(normalized);
 };
 
-export const normalizeCustomOpenAIBaseURL = (value) => {
+/**
+ * @param {unknown} value
+ * @param {{ allowRemote?: boolean }} [options] `allowRemote`: адрес задал оператор
+ *   сервера (управляемый STT MultiChamber), а не пользователь, поэтому запрет
+ *   удалённых хостов к нему не относится.
+ */
+export const normalizeCustomOpenAIBaseURL = (value, { allowRemote: operatorAllowsRemote = false } = {}) => {
   if (typeof value !== 'string' || !value.trim()) {
     return { value: undefined };
   }
@@ -50,7 +56,7 @@ export const normalizeCustomOpenAIBaseURL = (value) => {
   const isDesktop = (process.env.OPENCHAMBER_RUNTIME || '').trim().toLowerCase() === 'desktop';
   const envFlagRaw = process.env.OPENCHAMBER_ALLOW_REMOTE_OPENAI_COMPAT_URLS;
   const hasExplicitFlag = typeof envFlagRaw === 'string' && envFlagRaw.trim().length > 0;
-  const allowRemote = hasExplicitFlag ? isEnvFlagEnabled(envFlagRaw) : isDesktop;
+  const allowRemote = operatorAllowsRemote || (hasExplicitFlag ? isEnvFlagEnabled(envFlagRaw) : isDesktop);
   if (!allowRemote && !isAllowedLocalHost(parsed.hostname)) {
     return {
       error: 'Remote custom server URLs are disabled. Set OPENCHAMBER_ALLOW_REMOTE_OPENAI_COMPAT_URLS=true to allow this host.',

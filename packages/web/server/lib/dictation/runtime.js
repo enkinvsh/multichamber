@@ -24,6 +24,7 @@ import { WebSocketServer } from 'ws';
 
 import { DictationStreamManager } from './stream-manager.js';
 import { createDictationService } from './service.js';
+import { readManagedStt } from '../multichamber/managed-stt.js';
 
 const DICTATION_WS_PATH = '/api/dictation/ws';
 
@@ -47,7 +48,7 @@ export function createDictationRuntime({
   rejectWebSocketUpgrade,
   modelsDir,
 }) {
-  const service = createDictationService({ modelsDir });
+  const service = createDictationService({ modelsDir, managedStt: readManagedStt(process.env) });
 
   // Local text-to-speech (Kokoro in the dictation worker). Returns WAV bytes;
   // 503 with a reason code while the model is still downloading.
