@@ -53,6 +53,16 @@ export const isOpenCodeServeCommand = (cmdline) => {
 };
 
 /**
+ * Проверка «pid — это `opencode serve`» по /proc/<pid>/cmdline. Нечитаемый cmdline (процесс
+ * уже вышел или чужой пользователь) считается не OpenCode: отказ здесь закрыл бы dev-сервер.
+ * @param {{ procRoot?: string, readFile?: (path: string, encoding: 'utf8') => Promise<string> }} [options]
+ * @returns {(pid: number) => Promise<boolean>}
+ */
+export const createOpenCodeServeCheck = ({ procRoot = '/proc', readFile = fsPromises.readFile } = {}) => (pid) => (
+  readFile(`${procRoot}/${pid}/cmdline`, 'utf8').then(isOpenCodeServeCommand, () => false)
+);
+
+/**
  * Reads the process table and socket ownership for the given inodes.
  * Unreadable processes (exited, other users) are skipped; an unreadable /proc owns nothing.
  */
@@ -80,6 +90,68 @@ const readProcSnapshot = async ({ procRoot, readdir, readlink, readFile }, wante
   }));
 
   return { parentOf, ownersOfInode };
+};
+
+/** Слушающие сокеты из /proc/net/tcp и tcp6, слитые по порту; нечитаемая таблица пуста. */
+const readListeningInodesByPort = async ({ procRoot, readFile }) => {
+  const tables = await Promise.all(['tcp', 'tcp6'].map(
+    (name) => readFile(`${procRoot}/net/${name}`, 'utf8').then((text) => text, () => ''),
+  ));
+  const inodesByPort = new Map();
+  for (const table of tables) {
+    for (const [port, inodes] of parseListeningInodes(table)) {
+      const merged = inodesByPort.get(port) ?? new Set();
+      for (const inode of inodes) merged.add(inode);
+      inodesByPort.set(port, merged);
+    }
+  }
+  return inodesByPort;
+};
+
+/**
+ * Pid процессов, держащих слушающий сокет порта, для прокси превью. Берутся все адреса порта,
+ * а не только 127.0.0.1 и ::1: 0.0.0.0 и :: тоже принимают loopback, а лишний владелец может
+ * лишь закрыть порт, но не открыть служебный. К владельцу `opencode serve` добавляются его
+ * предки, тоже `opencode serve`: npm-обёртка запускает настоящий бинарник дочерним процессом,
+ * и сокет держит не тот pid, что запомнил lifecycle.
+ * Без /proc (не Linux) возвращает null; нечитаемый /proc даёт пустой список.
+ * @param {{
+ *   platform: string,
+ *   procRoot?: string,
+ *   readFile?: (path: string, encoding: 'utf8') => Promise<string>,
+ *   readdir?: (path: string) => Promise<string[]>,
+ *   readlink?: (path: string) => Promise<string>,
+ * }} options
+ * @returns {null | ((port: number) => Promise<number[]>)}
+ */
+export const createListenPortOwnerResolver = ({
+  platform,
+  procRoot = '/proc',
+  readFile = fsPromises.readFile,
+  readdir = fsPromises.readdir,
+  readlink = fsPromises.readlink,
+}) => {
+  if (platform !== 'linux') return null;
+  const io = { procRoot, readFile, readdir, readlink };
+  const isServe = createOpenCodeServeCheck({ procRoot, readFile });
+
+  return async (port) => {
+    const inodes = (await readListeningInodesByPort(io)).get(port);
+    if (inodes === undefined) return [];
+    const { parentOf, ownersOfInode } = await readProcSnapshot(io, inodes);
+    const owners = new Set([...inodes].flatMap((inode) => [...(ownersOfInode.get(inode) ?? [])]));
+    for (const owner of [...owners]) {
+      if (!(await isServe(owner))) continue;
+      let current = owner;
+      for (let depth = 0; depth < MAX_ANCESTRY_DEPTH; depth += 1) {
+        const parent = parentOf.get(current);
+        if (parent === undefined || parent <= 0 || parent === current || !(await isServe(parent))) break;
+        owners.add(parent);
+        current = parent;
+      }
+    }
+    return [...owners];
+  };
 };
 
 /**
@@ -114,17 +186,7 @@ export const createDevServerOwnershipFilter = ({
 
   return async (servers) => {
     if (servers.length === 0) return servers;
-    const tables = await Promise.all(['tcp', 'tcp6'].map(
-      (name) => readFile(`${procRoot}/net/${name}`, 'utf8').then((text) => text, () => ''),
-    ));
-    const inodesByPort = new Map();
-    for (const table of tables) {
-      for (const [port, inodes] of parseListeningInodes(table)) {
-        const merged = inodesByPort.get(port) ?? new Set();
-        for (const inode of inodes) merged.add(inode);
-        inodesByPort.set(port, merged);
-      }
-    }
+    const inodesByPort = await readListeningInodesByPort(io);
     const wanted = new Set(servers.flatMap((server) => [...(inodesByPort.get(server.port) ?? [])]));
     if (wanted.size === 0) return [];
 

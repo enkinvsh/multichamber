@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   createDevServerOwnershipFilter,
+  createListenPortOwnerResolver,
+  createOpenCodeServeCheck,
   isOpenCodeServeCommand,
   parseListeningInodes,
   parseParentPid,
@@ -114,6 +116,16 @@ describe('isOpenCodeServeCommand', () => {
   });
 });
 
+describe('createOpenCodeServeCheck', () => {
+  it('flags opencode serve by pid and treats an unreadable process as not OpenCode', async () => {
+    const isServe = createOpenCodeServeCheck(createFakeProc());
+    expect(await isServe(OPENCODE)).toBe(true);
+    expect(await isServe(SELF)).toBe(false);
+    expect(await isServe(220)).toBe(false);
+    expect(await isServe(99_999)).toBe(false);
+  });
+});
+
 describe('createDevServerOwnershipFilter', () => {
   it('is off when lockdown is off or outside Linux', () => {
     expect(createDevServerOwnershipFilter({ enabled: false, platform: 'linux' })).toBeNull();
@@ -173,5 +185,51 @@ describe('createDevServerOwnershipFilter', () => {
     const tcp = `${TCP}\n${listenLine(7000, '9010')}`;
     const filter = createFilter(createFakeProc(processes, { tcp }));
     expect(ports(await filter([{ port: 7000 }, { port: 5173 }]))).toEqual([5173]);
+  });
+});
+
+describe('createListenPortOwnerResolver', () => {
+  const createResolver = (fake = createFakeProc()) => createListenPortOwnerResolver({ platform: 'linux', ...fake });
+
+  it('is unavailable outside Linux', () => {
+    expect(createListenPortOwnerResolver({ platform: 'darwin' })).toBeNull();
+  });
+
+  it('returns the pid holding the listening socket, wherever it sits in the tree', async () => {
+    const resolve = createResolver();
+    expect(await resolve(3000)).toEqual([SELF]);
+    expect(await resolve(41001)).toEqual([OPENCODE]);
+    expect(await resolve(5173)).toEqual([220]);
+    expect(await resolve(47765)).toEqual([20]);
+    expect(await resolve(3001)).toEqual([310]);
+  });
+
+  it('returns nothing for a port without a listener or an owning process', async () => {
+    const resolve = createResolver();
+    expect(await resolve(5174)).toEqual([]);
+    expect(await resolve(6006)).toEqual([]);
+  });
+
+  it('reports a dev server orphaned to PID 1 as its own owner', async () => {
+    const resolve = createResolver(createFakeProc({ ...PROCESSES, 220: { ...PROCESSES[220], ppid: 1 } }));
+    expect(await resolve(5173)).toEqual([220]);
+  });
+
+  it('adds the opencode serve launcher wrapper above the real binary', async () => {
+    const processes = {
+      ...PROCESSES,
+      [OPENCODE]: { ...PROCESSES[OPENCODE], comm: 'node', cmdline: 'node\0/usr/lib/node_modules/opencode-ai/bin/opencode\0serve', sockets: [] },
+      250: { comm: 'opencode', ppid: OPENCODE, cmdline: '/usr/lib/opencode-linux-x64/bin/opencode\0serve', sockets: ['9003', '9004', '9005'] },
+    };
+    expect(await createResolver(createFakeProc(processes))(41002)).toEqual([250, OPENCODE]);
+  });
+
+  it('does not climb from an agent-started opencode serve through the shell into the managed server', async () => {
+    const processes = {
+      ...PROCESSES,
+      230: { comm: 'opencode', ppid: 210, cmdline: 'opencode\0serve\0--port\x007100', sockets: ['9011'] },
+    };
+    const tcp = `${TCP}\n${listenLine(7100, '9011')}`;
+    expect(await createResolver(createFakeProc(processes, { tcp }))(7100)).toEqual([230]);
   });
 });

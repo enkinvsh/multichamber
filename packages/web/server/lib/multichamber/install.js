@@ -13,13 +13,37 @@ const MULTICHAMBER_POLICY_ROUTE = '/api/multichamber/policy';
 const rootSchema = z.string().trim().catch('');
 
 /**
- * What the UI needs to know about this MultiChamber container.
+ * Адрес мастера zeny, который открывает приватное превью. Только абсолютный https без
+ * логина в URL: значение уходит в UI и открывается во вкладке, javascript: или http
+ * превратили бы опечатку в конфиге в XSS или утечку cookie.
+ * @param {string | undefined} raw
+ * @returns {string | null}
+ */
+const readPreviewOpenUrl = (raw) => {
+  const value = rootSchema.parse(raw);
+  if (value.length === 0) return null;
+  let parsed;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== 'https:' || parsed.hostname.length === 0 || parsed.username || parsed.password) return null;
+  return parsed.toString();
+};
+
+/**
+ * Что UI нужно знать об этом контейнере MultiChamber.
  * @param {NodeJS.ProcessEnv} env
- * @returns {{ lockdown: boolean, fsRoot: string | null }}
+ * @returns {{ lockdown: boolean, fsRoot: string | null, previewOpenUrl: string | null }}
  */
 export const readMultichamberPolicy = (env = process.env) => {
   const fsRoot = rootSchema.parse(env.MULTICHAMBER_FS_ROOT);
-  return { lockdown: isLockdownEnabled(env), fsRoot: fsRoot.length > 0 ? fsRoot : null };
+  return {
+    lockdown: isLockdownEnabled(env),
+    fsRoot: fsRoot.length > 0 ? fsRoot : null,
+    previewOpenUrl: readPreviewOpenUrl(env.MULTICHAMBER_PREVIEW_OPEN_URL),
+  };
 };
 
 /**

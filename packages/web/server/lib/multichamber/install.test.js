@@ -13,13 +13,21 @@ afterEach(() => {
 describe('readMultichamberPolicy', () => {
   it('reports lockdown and the fs root from the environment', () => {
     expect(readMultichamberPolicy({ MULTICHAMBER_LOCKDOWN: '1', MULTICHAMBER_FS_ROOT: ' /home/dev ' }))
-      .toEqual({ lockdown: true, fsRoot: '/home/dev' });
+      .toEqual({ lockdown: true, fsRoot: '/home/dev', previewOpenUrl: null });
   });
 
   it('reports no lockdown and no root when the variables are missing or blank', () => {
-    expect(readMultichamberPolicy({})).toEqual({ lockdown: false, fsRoot: null });
+    expect(readMultichamberPolicy({})).toEqual({ lockdown: false, fsRoot: null, previewOpenUrl: null });
     expect(readMultichamberPolicy({ MULTICHAMBER_LOCKDOWN: 'true', MULTICHAMBER_FS_ROOT: '  ' }))
-      .toEqual({ lockdown: false, fsRoot: null });
+      .toEqual({ lockdown: false, fsRoot: null, previewOpenUrl: null });
+  });
+
+  it('reports the preview open url only for an absolute https url', () => {
+    expect(readMultichamberPolicy({ MULTICHAMBER_PREVIEW_OPEN_URL: ' https://ai.example.test/api/preview/open ' }).previewOpenUrl)
+      .toBe('https://ai.example.test/api/preview/open');
+    for (const value of ['http://ai.example.test/open', 'javascript:alert(1)', '/api/preview/open', 'https://', 'https://user:pw@ai.example.test/open', '']) {
+      expect(readMultichamberPolicy({ MULTICHAMBER_PREVIEW_OPEN_URL: value }).previewOpenUrl).toBeNull();
+    }
   });
 });
 

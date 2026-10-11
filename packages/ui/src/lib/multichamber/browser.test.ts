@@ -1,11 +1,23 @@
-import { beforeEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { Window } from 'happy-dom';
 
 import { useUIStore } from '@/stores/useUIStore';
-import { openExternalLinkInLockdown, resolveMultichamberPreviewTarget } from './browser';
-import { setMultichamberLockdownForTests } from './lockdown';
+import {
+  buildMultichamberPreviewUrl,
+  openExternalLinkInLockdown,
+  openMultichamberPreview,
+  resolveMultichamberPreviewTarget,
+} from './browser';
+import { setMultichamberLockdownForTests, setMultichamberPreviewOpenUrlForTests } from './lockdown';
 import { multichamberLockedTabIds, withoutMultichamberLockedSurfaces } from './panels';
 
+const OPEN_URL = 'https://ai.example.test/api/preview/open';
+
 describe('resolveMultichamberPreviewTarget', () => {
+  beforeEach(() => {
+    setMultichamberLockdownForTests(true);
+  });
+
   test('opens a public site in a new tab', () => {
     expect(resolveMultichamberPreviewTarget('https://example.com/docs')).toEqual({
       kind: 'new-tab',
@@ -34,6 +46,82 @@ describe('resolveMultichamberPreviewTarget', () => {
       expect(resolveMultichamberPreviewTarget(url)).toEqual({ kind: 'unopenable' });
     });
   }
+});
+
+describe('buildMultichamberPreviewUrl', () => {
+  test('carries the port and the whole path with query and hash', () => {
+    const built = new URL(buildMultichamberPreviewUrl('http://localhost:5173/app/x?q=1&b=a b#top', OPEN_URL) ?? '');
+    expect(`${built.origin}${built.pathname}`).toBe(OPEN_URL);
+    expect(built.searchParams.get('port')).toBe('5173');
+    expect(built.searchParams.get('path')).toBe('/app/x?q=1&b=a%20b#top');
+  });
+
+  test('encodes the path so it cannot add parameters of its own', () => {
+    const built = buildMultichamberPreviewUrl('http://127.0.0.1:3001/a?port=22&x=1', OPEN_URL) ?? '';
+    expect(built).toBe(`${OPEN_URL}?port=3001&path=%2Fa%3Fport%3D22%26x%3D1`);
+  });
+
+  for (const url of ['localhost:5173', 'http://0.0.0.0:8080', 'https://[::1]:4000/', 'http://127.0.0.1:3000/app']) {
+    test(`rewrites the loopback address ${url}`, () => {
+      expect(buildMultichamberPreviewUrl(url, OPEN_URL)?.startsWith(`${OPEN_URL}?port=`)).toBe(true);
+    });
+  }
+
+  test('leaves public, portless and unconfigured addresses alone', () => {
+    expect(buildMultichamberPreviewUrl('https://example.com:8443/', OPEN_URL)).toBeNull();
+    expect(buildMultichamberPreviewUrl('http://localhost/', OPEN_URL)).toBeNull();
+    expect(buildMultichamberPreviewUrl('http://localhost:5173/', null)).toBeNull();
+    expect(buildMultichamberPreviewUrl('javascript:alert(1)', OPEN_URL)).toBeNull();
+  });
+});
+
+describe('private preview in lockdown', () => {
+  const originalDocument = globalThis.document;
+  let opened: Array<{ href: string; target: string; rel: string }> = [];
+
+  beforeEach(() => {
+    const window = new Window({ url: 'https://slot.example.test/' });
+    window.document.addEventListener('click', (event) => {
+      const anchor = event.target as unknown as HTMLAnchorElement;
+      opened.push({ href: anchor.href, target: anchor.target, rel: anchor.rel });
+      event.preventDefault();
+    });
+    globalThis.document = window.document as unknown as Document;
+    opened = [];
+    setMultichamberPreviewOpenUrlForTests(OPEN_URL);
+  });
+
+  afterEach(() => {
+    globalThis.document = originalDocument;
+    setMultichamberLockdownForTests(false);
+  });
+
+  test('a loopback address resolves to the private preview', () => {
+    expect(resolveMultichamberPreviewTarget('http://localhost:5173/')).toEqual({
+      kind: 'private-preview',
+      url: `${OPEN_URL}?port=5173&path=%2F`,
+    });
+  });
+
+  test('opens the preview as a top-level new tab without opener and referrer', () => {
+    openMultichamberPreview('http://localhost:5173/dash');
+    expect(opened).toEqual([{ href: `${OPEN_URL}?port=5173&path=%2Fdash`, target: '_blank', rel: 'noopener noreferrer' }]);
+    expect(document.querySelectorAll('a')).toHaveLength(0);
+  });
+
+  test('a chat link to localhost goes to the private preview, not to openExternal', () => {
+    const external: string[] = [];
+    openExternalLinkInLockdown('http://127.0.0.1:8123/x', (url) => external.push(url));
+    expect(external).toEqual([]);
+    expect(opened.map((entry) => entry.href)).toEqual([`${OPEN_URL}?port=8123&path=%2Fx`]);
+  });
+
+  test('a public chat link still opens as usual', () => {
+    const external: string[] = [];
+    openExternalLinkInLockdown('https://example.com/', (url) => external.push(url));
+    expect(external).toEqual(['https://example.com/']);
+    expect(opened).toEqual([]);
+  });
 });
 
 describe('browser surface in lockdown', () => {

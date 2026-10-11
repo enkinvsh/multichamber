@@ -21,11 +21,13 @@ import { runtimeFetch } from '@/lib/runtime-fetch';
 const policySchema = z.object({
   lockdown: z.boolean(),
   fsRoot: z.string().nullable(),
+  // Старый сервер MultiChamber поля не знает: отсутствие значит «превью выключено», а не сбой политики.
+  previewOpenUrl: z.string().nullish().transform((value) => value ?? null),
 });
 
-type MultichamberPolicy = z.infer<typeof policySchema>;
+type MultichamberPolicy = z.output<typeof policySchema>;
 
-const UNMANAGED_POLICY: MultichamberPolicy = { lockdown: false, fsRoot: null };
+const UNMANAGED_POLICY: MultichamberPolicy = { lockdown: false, fsRoot: null, previewOpenUrl: null };
 
 /** `unknown`: no answer yet; `failed`: last request failed, retried on demand. */
 type PolicyStatus = 'unknown' | 'loaded' | 'failed';
@@ -95,7 +97,7 @@ export const useMultichamberLockdownConfirmed = (): boolean =>
 
 /** Test seam: pins a loaded policy so store tests run against a known lockdown. */
 export const setMultichamberLockdownForTests = (lockdown: boolean): void => {
-  useMultichamberPolicyStore.setState({ policy: { lockdown, fsRoot: null }, status: 'loaded' });
+  useMultichamberPolicyStore.setState({ policy: { lockdown, fsRoot: null, previewOpenUrl: null }, status: 'loaded' });
 };
 
 /** Non-reactive read for stores and callbacks. */
@@ -126,5 +128,29 @@ export const useMultichamberFsRoot = (): string | null => {
 
 /** Тестовый шов: загруженная политика с заданным корнем файлов. */
 export const setMultichamberFsRootForTests = (fsRoot: string | null): void => {
-  useMultichamberPolicyStore.setState({ policy: { lockdown: fsRoot !== null, fsRoot }, status: 'loaded' });
+  useMultichamberPolicyStore.setState({ policy: { lockdown: fsRoot !== null, fsRoot, previewOpenUrl: null }, status: 'loaded' });
+};
+
+/**
+ * Адрес мастера zeny, открывающий приватное превью dev-сервера из контейнера;
+ * null, пока политика не загружена или превью не настроено (тогда остаётся тост).
+ */
+export const getMultichamberPreviewOpenUrl = (): string | null => {
+  const state = useMultichamberPolicyStore.getState();
+  return state.status === 'loaded' ? state.policy.previewOpenUrl : null;
+};
+
+/** Реактивный вариант `getMultichamberPreviewOpenUrl` для подсказок в UI. */
+export const useMultichamberPreviewOpenUrl = (): string | null => {
+  const previewOpenUrl = useMultichamberPolicyStore((state) => (state.status === 'loaded' ? state.policy.previewOpenUrl : null));
+  const loaded = useMultichamberPolicyStore((state) => state.status === 'loaded');
+  React.useEffect(() => {
+    if (!loaded) void loadMultichamberPolicy();
+  }, [loaded]);
+  return previewOpenUrl;
+};
+
+/** Тестовый шов: lockdown с настроенным (или выключенным) приватным превью. */
+export const setMultichamberPreviewOpenUrlForTests = (previewOpenUrl: string | null): void => {
+  useMultichamberPolicyStore.setState({ policy: { lockdown: true, fsRoot: null, previewOpenUrl }, status: 'loaded' });
 };

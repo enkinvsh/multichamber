@@ -10,7 +10,8 @@ import type { ToolPart as ToolPartType } from '@opencode-ai/sdk/v2';
 import type { StreamPhase, ToolPopupContent, AgentMentionInfo } from './types';
 import type { TurnActivityGroup, TurnChangedFile, TurnGroupingContext } from '../lib/turns/types';
 import { cn } from '@/lib/utils';
-import { useMultichamberLockdown } from '@/lib/multichamber/lockdown';
+import { buildMultichamberPreviewUrl } from '@/lib/multichamber/browser';
+import { useMultichamberLockdown, useMultichamberPreviewOpenUrl } from '@/lib/multichamber/lockdown';
 import { WorkerHighlightedCode } from '@/components/code/WorkerHighlightedCode';
 import { isEmptyTextPart, extractTextContent } from './partUtils';
 import { FadeInOnReveal } from './FadeInOnReveal';
@@ -1460,6 +1461,7 @@ const AssistantMessageBody = React.memo(({
     const isMiniChatSurface = chatSurfaceMode === 'mini-chat';
     const canUseProjectPlanActions = !isVSCode && !isMiniChatSurface && !isMobile;
     const multichamberLockdown = useMultichamberLockdown();
+    const multichamberPreviewOpenUrl = useMultichamberPreviewOpenUrl();
     const canShowMultiRunAction = !isVSCode && !isMiniChatSurface && !isMobile && !multichamberLockdown;
 
     const messagePreviewUrl = React.useMemo(() => {
@@ -2410,7 +2412,11 @@ const AssistantMessageBody = React.memo(({
                             <Icon name="global" className="h-3 w-3" />
                         </Button>
                     </TooltipTrigger>
-                    <TooltipContent sideOffset={6}>{t('chat.messageBody.actions.openPreview')}</TooltipContent>
+                    <TooltipContent sideOffset={6}>
+                        {multichamberLockdown && buildMultichamberPreviewUrl(messagePreviewUrl, multichamberPreviewOpenUrl) !== null
+                            ? t('multichamber.preview.openPrivate')
+                            : t('chat.messageBody.actions.openPreview')}
+                    </TooltipContent>
                 </Tooltip>
             ) : null}
             {canUseProjectPlanActions && !isReviewSessionView ? (

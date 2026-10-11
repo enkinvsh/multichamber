@@ -88,9 +88,19 @@ const chatAttachmentsRu: Record<keyof typeof chatAttachmentsEn, string> = {
   'multichamber.chat.attachments.savedPreview': 'Вложения: {names}',
 };
 
+// Приватное превью dev-сервера из контейнера через мастер zeny.
+const previewEn = {
+  'multichamber.preview.openPrivate': 'Opens a private preview in a new tab',
+} as const;
+
+const previewRu: Record<keyof typeof previewEn, string> = {
+  'multichamber.preview.openPrivate': 'Откроется приватное превью в новой вкладке',
+};
+
 const en = {
   ...filesPanelEn,
   ...chatAttachmentsEn,
+  ...previewEn,
   'multichamber.budget.pill': 'Budget {percent}%',
   'multichamber.budget.label': 'Budget',
   'multichamber.budget.resetsIn': 'Resets in {duration}',
@@ -137,6 +147,7 @@ export const multichamberI18n = {
   ru: {
     ...filesPanelRu,
     ...chatAttachmentsRu,
+    ...previewRu,
     'multichamber.budget.pill': 'Бюджет {percent}%',
     'multichamber.budget.label': 'Бюджет',
     'multichamber.budget.resetsIn': 'Сброс через {duration}',
@@ -178,6 +189,7 @@ export const multichamberI18n = {
   uk: {
     ...filesPanelEn,
     ...chatAttachmentsEn,
+    ...previewEn,
     'multichamber.budget.pill': 'Бюджет {percent}%',
     'multichamber.budget.label': 'Бюджет',
     'multichamber.budget.resetsIn': 'Скидання через {duration}',
@@ -219,6 +231,7 @@ export const multichamberI18n = {
   de: {
     ...filesPanelEn,
     ...chatAttachmentsEn,
+    ...previewEn,
     'multichamber.budget.pill': 'Budget {percent} %',
     'multichamber.budget.label': 'Budget',
     'multichamber.budget.resetsIn': 'Zurückgesetzt in {duration}',
@@ -260,6 +273,7 @@ export const multichamberI18n = {
   fr: {
     ...filesPanelEn,
     ...chatAttachmentsEn,
+    ...previewEn,
     'multichamber.budget.pill': 'Budget {percent} %',
     'multichamber.budget.label': 'Budget',
     'multichamber.budget.resetsIn': 'Réinitialisation dans {duration}',
@@ -301,6 +315,7 @@ export const multichamberI18n = {
   es: {
     ...filesPanelEn,
     ...chatAttachmentsEn,
+    ...previewEn,
     'multichamber.budget.pill': 'Presupuesto {percent} %',
     'multichamber.budget.label': 'Presupuesto',
     'multichamber.budget.resetsIn': 'Se restablece en {duration}',
@@ -342,6 +357,7 @@ export const multichamberI18n = {
   'pt-BR': {
     ...filesPanelEn,
     ...chatAttachmentsEn,
+    ...previewEn,
     'multichamber.budget.pill': 'Orçamento {percent}%',
     'multichamber.budget.label': 'Orçamento',
     'multichamber.budget.resetsIn': 'Reinicia em {duration}',
@@ -383,6 +399,7 @@ export const multichamberI18n = {
   pl: {
     ...filesPanelEn,
     ...chatAttachmentsEn,
+    ...previewEn,
     'multichamber.budget.pill': 'Budżet {percent}%',
     'multichamber.budget.label': 'Budżet',
     'multichamber.budget.resetsIn': 'Reset za {duration}',
@@ -424,6 +441,7 @@ export const multichamberI18n = {
   tr: {
     ...filesPanelEn,
     ...chatAttachmentsEn,
+    ...previewEn,
     'multichamber.budget.pill': 'Bütçe %{percent}',
     'multichamber.budget.label': 'Bütçe',
     'multichamber.budget.resetsIn': '{duration} sonra sıfırlanır',
@@ -465,6 +483,7 @@ export const multichamberI18n = {
   ja: {
     ...filesPanelEn,
     ...chatAttachmentsEn,
+    ...previewEn,
     'multichamber.budget.pill': '予算 {percent}%',
     'multichamber.budget.label': '予算',
     'multichamber.budget.resetsIn': 'リセットまで {duration}',
@@ -506,6 +525,7 @@ export const multichamberI18n = {
   ko: {
     ...filesPanelEn,
     ...chatAttachmentsEn,
+    ...previewEn,
     'multichamber.budget.pill': '예산 {percent}%',
     'multichamber.budget.label': '예산',
     'multichamber.budget.resetsIn': '{duration} 후 초기화',
@@ -547,6 +567,7 @@ export const multichamberI18n = {
   'zh-CN': {
     ...filesPanelEn,
     ...chatAttachmentsEn,
+    ...previewEn,
     'multichamber.budget.pill': '预算 {percent}%',
     'multichamber.budget.label': '预算',
     'multichamber.budget.resetsIn': '{duration}后重置',
@@ -588,6 +609,7 @@ export const multichamberI18n = {
   'zh-TW': {
     ...filesPanelEn,
     ...chatAttachmentsEn,
+    ...previewEn,
     'multichamber.budget.pill': '預算 {percent}%',
     'multichamber.budget.label': '預算',
     'multichamber.budget.resetsIn': '{duration}後重設',

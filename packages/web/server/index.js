@@ -42,6 +42,7 @@ import { createDictationRuntime } from './lib/dictation/runtime.js';
 import { createMultichamberDevServerFilter, installMultichamber, readMultichamberPolicy } from './lib/multichamber/install.js';
 import { createMultichamberBrand } from './lib/multichamber/brand.js';
 import { createHostGuard } from './lib/multichamber/host-guard.js';
+import { startPreviewProxy } from './lib/multichamber/preview-proxy-process.js';
 import { isLockdownEnabled } from './lib/multichamber/lockdown-guard.js';
 import {
   createGlobalUiEventBroadcaster,
@@ -1962,10 +1963,11 @@ async function main(options = {}) {
 
   // One scanner backs both discovery and the tunnel allowlist, so a port the
   // user can see is exactly a port the tunnel will dial.
+  const multichamberDevServerFilter = createMultichamberDevServerFilter({ platform: process.platform, getOpenCodePid: () => openCodeProcess?.pid });
   const devServerScanner = createDevServerScanner({
     spawn,
     platform: process.platform,
-    filterServers: createMultichamberDevServerFilter({ platform: process.platform, getOpenCodePid: () => openCodeProcess?.pid }),
+    filterServers: multichamberDevServerFilter,
   });
   const listDevServers = () => devServerScanner.discover({
     ownPorts: [port, openCodePort].filter((value) => Number.isInteger(value) && value > 0),
@@ -2113,6 +2115,19 @@ async function main(options = {}) {
   }, 60_000);
   relayReconcileTimer.unref?.();
 
+  // Превью стартует после основного сервера: так известен реальный порт :3000, его нельзя отдавать наружу.
+  let previewProxy = null;
+  try {
+    previewProxy = await startPreviewProxy({
+      env: process.env,
+      logger: console,
+      // Читается при каждом (пере)запуске дочернего процесса; владельца порта ребёнок проверяет сам.
+      getDeniedPorts: () => [port, tunnelRuntimeContext.getActivePort(), openCodePort],
+    });
+  } catch (error) {
+    console.warn('[preview-proxy] failed to start:', error?.message || error);
+  }
+
   return {
     expressApp: app,
     httpServer: server,
@@ -2143,6 +2158,9 @@ async function main(options = {}) {
     },
     stop: async (shutdownOptions = {}) => {
       realtimeProxyRuntime.stop();
+      await previewProxy?.stop().catch((error) => {
+        console.warn('[preview-proxy] failed to stop:', error?.message || error);
+      });
       clearInterval(relayReconcileTimer);
       try {
         relayService.stop();
