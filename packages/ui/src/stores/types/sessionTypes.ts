@@ -24,6 +24,11 @@ export interface AttachedFile {
     /** Shared ID linking entries extracted from the same document (PPTX, DOCX, etc.).
      *  Removing any entry with this ID cascades to all entries in the group. */
     sourceDocumentId?: string;
+    /** Исходный файл пользователя, который перед отправкой сохраняется в ~/uploads.
+     *  Стоит на одной записи из группы sourceDocumentId, чтобы документ ушёл на диск один раз. */
+    diskFile?: File;
+    /** Запись только для диска: модели не отправляется, агент получает путь к файлу. */
+    diskOnly?: boolean;
 }
 
 export type EditPermissionMode = 'allow' | 'ask' | 'deny' | 'full';

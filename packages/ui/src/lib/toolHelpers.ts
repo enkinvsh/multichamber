@@ -726,7 +726,7 @@ export function isSvgFile(filePath: string): boolean {
 /** Known non-text extensions that must not be opened or saved as UTF-8 text. */
 const BINARY_FILE_EXTENSIONS = new Set([
   // Documents / office
-  'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp',
+  'pdf', 'doc', 'docx', 'xls', 'xlsx', 'xlsm', 'ppt', 'pptx', 'odt', 'ods', 'odp',
   // Archives / packages
   'zip', 'rar', '7z', 'gz', 'tgz', 'tar', 'bz2', 'xz', 'jar', 'war', 'apk', 'dmg', 'iso',
   'deb', 'rpm', 'msi',

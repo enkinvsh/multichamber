@@ -715,12 +715,23 @@ export interface FilesAPI {
   readFile?(path: string, options?: FileReadOptions): Promise<{ content: string; path: string }>;
   readFileBinary?(path: string, options?: FileReadOptions): Promise<{ dataUrl: string; path: string }>;
   writeFile?(path: string, content: string): Promise<{ success: boolean; path: string }>;
-  uploadFile?(path: string, file: Blob, options?: { overwrite?: boolean; directory?: string }): Promise<{ success: boolean; path: string }>;
+  // onConflict 'rename': при занятом имени сервер сохраняет как «name (2).ext» и возвращает итоговый путь.
+  // onProgress: байты отправленного тела запроса — для прогресса загрузки в тосте.
+  uploadFile?(path: string, file: Blob, options?: { overwrite?: boolean; directory?: string; onConflict?: 'rename'; onProgress?: (loaded: number, total: number) => void }): Promise<{ success: boolean; path: string }>;
   delete?(path: string): Promise<{ success: boolean }>;
   rename?(oldPath: string, newPath: string): Promise<{ success: boolean; path: string }>;
   revealPath?(path: string): Promise<{ success: boolean }>;
   execCommands?(commands: string[], cwd: string): Promise<{ success: boolean; results: CommandExecResult[] }>;
   downloadFile?(path: string): Promise<void>;
+  // Сначала проверяет размер архива (413/429 → FilesystemError с reason/bytes/limit), потом отдаёт zip навигацией.
+  downloadDirectory?(path: string): Promise<void>;
+  getDiskUsage?(path: string): Promise<DiskUsage>;
+}
+
+export interface DiskUsage {
+  total: number;
+  free: number;
+  used: number;
 }
 
 export interface ProjectEntry {

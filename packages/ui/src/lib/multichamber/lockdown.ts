@@ -15,6 +15,7 @@ import React from 'react';
 import { z } from 'zod';
 import { create } from 'zustand';
 import { isWebRuntime } from '@/lib/desktop';
+import { isFilePathWithinDirectory } from '@/lib/path-utils';
 import { runtimeFetch } from '@/lib/runtime-fetch';
 
 const policySchema = z.object({
@@ -100,3 +101,30 @@ export const setMultichamberLockdownForTests = (lockdown: boolean): void => {
 /** Non-reactive read for stores and callbacks. */
 export const isMultichamberLockdown = (): boolean =>
   resolveLockdown(useMultichamberPolicyStore.getState());
+
+/**
+ * Путь внутри MULTICHAMBER_FS_ROOT. Сервер принимает такие пути из любой рабочей
+ * области (корень у fs-маршрутов в managedRoots), поэтому клиенту не нужен
+ * обходной режим allowOutsideWorkspace, требующий desktop-гранта, которого в
+ * вебе нет. Пока политика не загружена или корень не задан — false: в обычном
+ * OpenChamber доступ не расширяется.
+ */
+export const isPathWithinMultichamberFsRoot = (path: string): boolean => {
+  const { fsRoot } = useMultichamberPolicyStore.getState().policy;
+  return fsRoot !== null && isFilePathWithinDirectory(path, fsRoot);
+};
+
+/** Реактивный корень файлов контейнера; null вне MultiChamber. */
+export const useMultichamberFsRoot = (): string | null => {
+  const fsRoot = useMultichamberPolicyStore((state) => state.policy.fsRoot);
+  const loaded = useMultichamberPolicyStore((state) => state.status === 'loaded');
+  React.useEffect(() => {
+    if (!loaded) void loadMultichamberPolicy();
+  }, [loaded]);
+  return fsRoot;
+};
+
+/** Тестовый шов: загруженная политика с заданным корнем файлов. */
+export const setMultichamberFsRootForTests = (fsRoot: string | null): void => {
+  useMultichamberPolicyStore.setState({ policy: { lockdown: fsRoot !== null, fsRoot }, status: 'loaded' });
+};

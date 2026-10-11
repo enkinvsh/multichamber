@@ -8,6 +8,8 @@ import type { AttachIssueRequest } from '@openchamber/sdk'
 import type { ContextPartMetadata } from '@/lib/messages/contextParts'
 import type { AttachedFile } from "@/stores/types/sessionTypes"
 import { prepareAttachmentFiles } from "./attachment-files"
+import { classifyAttachmentDestination } from "./attachment-disk"
+import { getRegisteredRuntimeAPIs } from "@/contexts/runtimeAPIRegistry"
 import { getChatDraftIdentityKey, subscribeChatDraftDeletion, type ChatDraftIdentity } from "@/lib/chatDraftPersistence"
 
 const FILE_URI_PREFIX = "file://"
@@ -85,6 +87,22 @@ export const prepareLocalAttachments = async (
   }
   return attachedFiles
 }
+
+// Сохранение вложений в ~/uploads есть только у web-рантайма (zeny-контейнер);
+// без него поведение остаётся прежним: всё уходит модели как data URL.
+export const canSaveAttachmentsToDisk = (): boolean => Boolean(getRegisteredRuntimeAPIs()?.files.uploadFile)
+
+const createDiskOnlyAttachment = (file: File): AttachedFile => ({
+  id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  file,
+  dataUrl: "",
+  mimeType: file.type || "application/octet-stream",
+  filename: file.name,
+  size: file.size,
+  source: "local",
+  diskFile: file,
+  diskOnly: true,
+})
 
 const getDataUrlByteSize = (url: string): number => {
   if (!url.startsWith("data:")) return 0
@@ -170,7 +188,8 @@ export type InputState = {
   consumePendingBtwComposerRequest: (parentSessionId: string | null) => PendingBtwComposerRequest | null
   setPendingSyntheticParts: (parts: SyntheticContextPart[] | null) => void
   consumePendingSyntheticParts: () => SyntheticContextPart[] | null
-  addAttachedFile: (file: File) => Promise<boolean>
+  /** `modelOnly` — служебные вложения (вставленный длинный текст), которые не сохраняются на диск. */
+  addAttachedFile: (file: File, options?: { modelOnly?: boolean }) => Promise<boolean>
   removeAttachedFile: (id: string) => void
   setAttachedFiles: (files: AttachedFile[], target?: ChatDraftIdentity | null) => void
   clearAttachedFiles: (target?: ChatDraftIdentity | null) => void
@@ -270,22 +289,34 @@ export const useInputStore = create<InputState>()((set, get) => ({
     return pendingSyntheticParts
   },
 
-  addAttachedFile: async (file: File) => {
+  addAttachedFile: async (file: File, options) => {
     const generation = attachmentReadGeneration
+    const saveToDisk = options?.modelOnly !== true && canSaveAttachmentsToDisk()
+    const attachDiskOnly = () => {
+      set((state) => ({ attachedFiles: [...state.attachedFiles, createDiskOnlyAttachment(file)] }))
+      return true
+    }
+    if (saveToDisk && classifyAttachmentDestination(file) === "disk-only") return attachDiskOnly()
+
     for (let attempt = 0; attempt < MAX_ATTACHMENT_PREPARATION_ATTEMPTS; attempt += 1) {
       const reservedFilenames = get().attachedFiles.map((attachment) => attachment.filename)
       let attachedFiles: AttachedFile[] | undefined
       try {
         attachedFiles = await prepareLocalAttachments(file, reservedFilenames)
       } catch {
-        return false
+        attachedFiles = undefined
       }
-      if (!attachedFiles || generation !== attachmentReadGeneration) return false
+      if (generation !== attachmentReadGeneration) return false
+      // Битый документ или несконвертированный HEIC модель не прочтёт, но файл
+      // пользователя всё равно должен дойти до агента — хотя бы с диска.
+      if (!attachedFiles) return saveToDisk ? attachDiskOnly() : false
 
       const generatedFilenames = attachedFiles.slice(1).map((attachment) => attachment.filename)
       if (hasGeneratedFilenameCollision(generatedFilenames, get().attachedFiles)) continue
 
-      set((state) => ({ attachedFiles: [...state.attachedFiles, ...attachedFiles] }))
+      const [first, ...rest] = attachedFiles
+      const prepared = saveToDisk && first ? [{ ...first, diskFile: file }, ...rest] : attachedFiles
+      set((state) => ({ attachedFiles: [...state.attachedFiles, ...prepared] }))
       return true
     }
     return false

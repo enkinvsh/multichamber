@@ -292,7 +292,7 @@ const FileChip = memo(({ file, onRemove }: FileChipProps) => {
         }
       }}
       className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-border/80 bg-background pl-2 pr-1 text-xs text-foreground text-left hover:opacity-90 transition-opacity"
-      title={displayName}
+      title={file.diskOnly ? `${displayName} — ${t('multichamber.chat.attachments.diskOnly')}` : displayName}
     >
       <FileTypeIcon filePath={file.filename} extension={extension} className="h-4 w-4 flex-shrink-0" />
       <span className="truncate max-w-[200px]">{displayName}</span>
@@ -400,8 +400,10 @@ export const AttachedFilesList = memo(({ onShowPopup, className }: AttachedFiles
 
   if (localFiles.length === 0) return null;
 
-  const images = localFiles.filter((f) => f.mimeType.startsWith('image/'));
-  const otherFiles = localFiles.filter((f) => !f.mimeType.startsWith('image/'));
+  // У файла только для диска нет data URL, превью строить не из чего — показываем обычным чипом.
+  const isPreviewableImage = (f: AttachedFile) => f.mimeType.startsWith('image/') && !f.diskOnly;
+  const images = localFiles.filter(isPreviewableImage);
+  const otherFiles = localFiles.filter((f) => !isPreviewableImage(f));
   const imageGallery = images.map((file) => ({
     url: file.dataUrl || file.serverPath || '',
     mimeType: file.mimeType,

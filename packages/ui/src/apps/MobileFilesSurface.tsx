@@ -3,11 +3,14 @@ import {
   RiArrowLeftLine,
   RiArrowRightSLine,
   RiCloseLine,
+  RiDownloadLine,
   RiFolder3Fill,
   RiFolderOpenFill,
+  RiFolderZipLine,
   RiLoader4Line,
   RiRefreshLine,
   RiSearchLine,
+  RiUploadLine,
 } from '@remixicon/react';
 
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
@@ -16,6 +19,13 @@ import { ScrollShadow } from '@/components/ui/ScrollShadow';
 import { FileTypeIcon } from '@/components/icons/FileTypeIcon';
 import { useRuntimeAPIs } from '@/hooks/useRuntimeAPIs';
 import { useEffectiveDirectory } from '@/hooks/useEffectiveDirectory';
+import {
+  formatHumanSize,
+  useDownloadDirectory,
+  useDownloadFileAction,
+  useFilesUpload,
+} from '@/hooks/useFilesPanelActions';
+import { DiskUsageLine } from '@/components/views/files/DiskUsageLine';
 import { useI18n } from '@/lib/i18n';
 import type { FileListEntry, FileSearchResult } from '@/lib/api/types';
 import { useFilesViewTabsStore } from '@/stores/useFilesViewTabsStore';
@@ -56,17 +66,7 @@ const getRelativePath = (path: string, root: string): string => {
   return normalizedPath;
 };
 
-const formatFileSize = (size?: number): string => {
-  if (typeof size !== 'number' || !Number.isFinite(size) || size < 0) return '';
-  if (size < 1024) return `${size} B`;
-  const units = ['KB', 'MB', 'GB'];
-  let value = size / 1024;
-  for (const unit of units) {
-    if (value < 1024 || unit === units[units.length - 1]) return `${value.toFixed(value >= 10 ? 0 : 1)} ${unit}`;
-    value /= 1024;
-  }
-  return '';
-};
+const HEADER_ICON_BUTTON_CLASS = 'flex size-10 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-interactive-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50';
 
 type MobileFilesSurfaceProps = {
   /** When provided, the header gets a close X that calls this. */
@@ -86,6 +86,8 @@ export const MobileFilesSurface: React.FC<MobileFilesSurfaceProps> = ({ onClose 
   const [searchResults, setSearchResults] = React.useState<FileSearchResult[]>([]);
   const [isSearching, setIsSearching] = React.useState(false);
   const directoryLoadRequestIdRef = React.useRef(0);
+  const downloadFile = useDownloadFileAction();
+  const downloadDirectory = useDownloadDirectory();
 
   React.useEffect(() => {
     if (!root) return;
@@ -156,6 +158,19 @@ export const MobileFilesSurface: React.FC<MobileFilesSurfaceProps> = ({ onClose 
     };
   }, [files, query, route]);
 
+  const routeDirectory = route.type === 'browser' ? route.directory : '';
+  const handleFilesUploaded = React.useCallback(async (directory: string) => {
+    // Перечитываем только если пользователь всё ещё смотрит ту же папку.
+    if (normalizePath(directory) === normalizePath(routeDirectory)) {
+      await loadDirectory(directory);
+    }
+  }, [loadDirectory, routeDirectory]);
+  const filesUpload = useFilesUpload({ onUploaded: handleFilesUploaded });
+
+  const formatFileSize = (size?: number): string => (
+    typeof size === 'number' && Number.isFinite(size) && size >= 0 ? formatHumanSize(size, t) : ''
+  );
+
   const openDirectory = (directory: string) => {
     setQuery('');
     setRoute({ type: 'browser', directory });
@@ -205,6 +220,18 @@ export const MobileFilesSurface: React.FC<MobileFilesSurfaceProps> = ({ onClose 
           <div className="min-w-0 flex-1">
             <h2 className="truncate typography-ui-header text-foreground">{getNameFromPath(route.path)}</h2>
           </div>
+          {downloadFile ? (
+            <button
+              type="button"
+              className={HEADER_ICON_BUTTON_CLASS}
+              aria-label={t('multichamber.files.download')}
+              title={t('multichamber.files.download')}
+              onClick={() => void downloadFile(route.path)}
+              style={{ touchAction: 'manipulation' }}
+            >
+              <RiDownloadLine className="size-5" />
+            </button>
+          ) : null}
         </header>
         <div className="min-h-0 flex-1 overflow-hidden">
           <ErrorBoundary>
@@ -256,9 +283,39 @@ export const MobileFilesSurface: React.FC<MobileFilesSurfaceProps> = ({ onClose 
         <div className="min-w-0 flex-1 px-1">
           <h2 className="truncate typography-ui-label text-foreground">{directoryLabel}</h2>
         </div>
+        {filesUpload.canUpload ? (
+          <>
+            <button
+              type="button"
+              className={HEADER_ICON_BUTTON_CLASS}
+              aria-label={t('multichamber.files.upload')}
+              title={t('multichamber.files.uploadHint')}
+              disabled={filesUpload.isUploading}
+              onClick={() => filesUpload.openPicker(route.directory)}
+              style={{ touchAction: 'manipulation' }}
+            >
+              {filesUpload.isUploading
+                ? <RiLoader4Line className="size-5 animate-spin" />
+                : <RiUploadLine className="size-5" />}
+            </button>
+            <input {...filesUpload.inputProps} />
+          </>
+        ) : null}
+        {downloadDirectory ? (
+          <button
+            type="button"
+            className={HEADER_ICON_BUTTON_CLASS}
+            aria-label={t('multichamber.files.downloadFolder')}
+            title={`${t('multichamber.files.downloadFolder')}. ${t('multichamber.files.downloadFolderHint')}`}
+            onClick={() => void downloadDirectory(route.directory)}
+            style={{ touchAction: 'manipulation' }}
+          >
+            <RiFolderZipLine className="size-5" />
+          </button>
+        ) : null}
         <button
           type="button"
-          className="flex size-10 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-interactive-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className={HEADER_ICON_BUTTON_CLASS}
           aria-label={t('mobile.files.refreshAria')}
           onClick={() => void loadDirectory(route.directory)}
           style={{ touchAction: 'manipulation' }}
@@ -296,11 +353,13 @@ export const MobileFilesSurface: React.FC<MobileFilesSurfaceProps> = ({ onClose 
                 directory={entry.isDirectory}
                 meta={entry.isDirectory ? undefined : formatFileSize(entry.size)}
                 onClick={() => entry.isDirectory ? openDirectory(entry.path) : openFile(entry.path)}
+                onDownload={!entry.isDirectory && downloadFile ? () => void downloadFile(entry.path) : undefined}
               />
             ))}
           </div>
         )}
       </ScrollShadow>
+      <DiskUsageLine path={root} className="shrink-0 px-5 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1" />
     </div>
   );
 };
@@ -311,23 +370,41 @@ const MobileFileRow: React.FC<{
   directory: boolean;
   meta?: string;
   onClick: () => void;
-}> = ({ name, path, directory, meta, onClick }) => (
-  <button
-    type="button"
-    className="flex min-h-14 w-full items-center gap-3 border-b border-border/70 px-3 py-2.5 text-left transition-colors last:border-b-0 hover:bg-interactive-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
-    onClick={onClick}
-    style={{ touchAction: 'manipulation' }}
-  >
-    {directory ? (
-      <RiFolder3Fill className="size-5 shrink-0 text-primary/80" />
-    ) : (
-      <FileTypeIcon filePath={path} className="size-5 shrink-0" />
-    )}
-    <span className="block min-w-0 flex-1 truncate typography-ui-label text-foreground">{name}</span>
-    {meta ? <span className="shrink-0 typography-micro text-muted-foreground">{meta}</span> : null}
-    {directory ? <RiArrowRightSLine className="size-4 shrink-0 text-muted-foreground/60" /> : null}
-  </button>
-);
+  onDownload?: () => void;
+}> = ({ name, path, directory, meta, onClick, onDownload }) => {
+  const { t } = useI18n();
+  return (
+    <div className="flex items-stretch border-b border-border/70 last:border-b-0">
+      <button
+        type="button"
+        className="flex min-h-14 min-w-0 flex-1 items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-interactive-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+        onClick={onClick}
+        style={{ touchAction: 'manipulation' }}
+      >
+        {directory ? (
+          <RiFolder3Fill className="size-5 shrink-0 text-primary/80" />
+        ) : (
+          <FileTypeIcon filePath={path} className="size-5 shrink-0" />
+        )}
+        <span className="block min-w-0 flex-1 truncate typography-ui-label text-foreground">{name}</span>
+        {meta ? <span className="shrink-0 typography-micro text-muted-foreground">{meta}</span> : null}
+        {directory ? <RiArrowRightSLine className="size-4 shrink-0 text-muted-foreground/60" /> : null}
+      </button>
+      {onDownload ? (
+        // Отдельная кнопка рядом со строкой: на телефоне нет контекстного меню, а открывать тяжёлый файл ради скачивания долго.
+        <button
+          type="button"
+          className="flex w-12 shrink-0 items-center justify-center text-muted-foreground transition-colors hover:bg-interactive-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+          aria-label={`${t('multichamber.files.download')}: ${name}`}
+          onClick={onDownload}
+          style={{ touchAction: 'manipulation' }}
+        >
+          <RiDownloadLine className="size-5" />
+        </button>
+      ) : null}
+    </div>
+  );
+};
 
 const MobileSearchResults: React.FC<{
   results: FileSearchResult[];

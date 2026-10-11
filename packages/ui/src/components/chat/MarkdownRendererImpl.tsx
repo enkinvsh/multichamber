@@ -15,6 +15,7 @@ import type { ToolPopupContent } from './message/types';
 import { FadeInOnReveal } from './message/FadeInOnReveal';
 import { useUIStore } from '@/stores/useUIStore';
 import { useEffectiveDirectory } from '@/hooks/useEffectiveDirectory';
+import { useDirectoryStore } from '@/stores/useDirectoryStore';
 import { useRuntimeAPIs } from '@/hooks/useRuntimeAPIs';
 import type { EditorAPI } from '@/lib/api/types';
 import { isDesktopLocalOriginActive, isDesktopShell, isVSCodeRuntime } from '@/lib/desktop';
@@ -44,6 +45,9 @@ import { findTextPosition } from './markdown/textPosition';
 import { createMermaidViewerRegistry, MERMAID_BLOCK_SELECTOR, shouldRefreshMermaidViewers } from './markdown/mermaidViewer';
 import {
   BLOCK_PATH_TOKEN_RE,
+  expandHomeReferencePath,
+  fileUrlToReferenceCandidate,
+  findHomePathTokens,
   isAbsoluteReferencePath,
   localPathFromFileUrl,
   normalizeReferencePath,
@@ -312,21 +316,73 @@ const wrapBlockCodePathTokens = (container: HTMLElement): void => {
   }
 };
 
-const getResolvedReference = (rawValue: string, effectiveDirectory: string): (ParsedFileReference & { resolvedPath: string }) | null => {
-  const parsed = parseFileReference(rawValue);
-  if (!parsed || !isLikelyFilePathValue(parsed.path)) {
+// Текстовые узлы внутри этих элементов уже обрабатываются своим путём
+// (inline-код, ссылки, блоки кода) — повторно их не оборачиваем.
+const PLAIN_TEXT_PATH_SKIP_SELECTOR = `pre, code, a, [data-markdown="inline-code"], ${BLOCK_PATH_TOKEN_SELECTOR}`;
+
+// Агент пишет пути к сохранённым вложениям (`~/uploads/…`, `/home/dev/…`,
+// `file:///…`) обычным текстом — без обёртки в span проверять и открывать нечего.
+const wrapPlainTextHomePaths = (container: HTMLElement, homeDirectory: string): void => {
+  const doc = container.ownerDocument;
+  if (!doc) {
+    return;
+  }
+
+  const home = homeDirectory.replace(/\/+$/, '');
+  const walker = doc.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  const textNodes: Text[] = [];
+  let currentNode = walker.nextNode();
+  while (currentNode) {
+    const textNode = currentNode as Text;
+    const value = textNode.data;
+    const mayContainPath = value.includes('~/') || value.includes('file:') || (home.length > 1 && value.includes(home));
+    if (mayContainPath && !textNode.parentElement?.closest(PLAIN_TEXT_PATH_SKIP_SELECTOR)) {
+      textNodes.push(textNode);
+    }
+    currentNode = walker.nextNode();
+  }
+
+  for (const textNode of textNodes) {
+    const tokens = findHomePathTokens(textNode.data, homeDirectory);
+    for (const { start, end, raw } of tokens.reverse()) {
+      if (!isLikelyFilePath(fileUrlToReferenceCandidate(raw))) {
+        continue;
+      }
+      const tail = textNode.splitText(start);
+      tail.splitText(end - start);
+      const span = doc.createElement('span');
+      span.setAttribute(BLOCK_PATH_TOKEN_ATTR, 'true');
+      span.textContent = raw;
+      tail.replaceWith(span);
+    }
+  }
+};
+
+const getResolvedReference = (
+  rawValue: string,
+  effectiveDirectory: string,
+  homeDirectory: string,
+): (ParsedFileReference & { resolvedPath: string }) | null => {
+  const parsed = parseFileReference(fileUrlToReferenceCandidate(rawValue));
+  if (!parsed) {
     return null;
   }
 
-  const resolvedPath = isAbsolutePath(parsed.path)
-    ? normalizePath(parsed.path)
-    : toAbsolutePath(effectiveDirectory, parsed.path);
+  const path = expandHomeReferencePath(parsed.path, homeDirectory);
+  if (!path || !isLikelyFilePathValue(path)) {
+    return null;
+  }
+
+  const resolvedPath = isAbsolutePath(path)
+    ? normalizePath(path)
+    : toAbsolutePath(effectiveDirectory, path);
   if (!resolvedPath) {
     return null;
   }
 
   return {
     ...parsed,
+    path,
     resolvedPath,
   };
 };
@@ -349,6 +405,7 @@ const useFileReferenceInteractions = ({
   enabled: boolean;
 }) => {
   const annotationDebounceRef = React.useRef<number | null>(null);
+  const homeDirectory = useDirectoryStore((state) => state.homeDirectory) ?? '';
 
   React.useEffect(() => {
     const container = containerRef.current;
@@ -430,6 +487,7 @@ const useFileReferenceInteractions = ({
     const annotateFileLinksInner = () => {
       if (fileReferencesEnabled) {
         wrapBlockCodePathTokens(container);
+        wrapPlainTextHomePaths(container, homeDirectory);
       }
       const candidates = container.querySelectorAll<HTMLElement>(
         `[data-markdown="inline-code"], a, ${BLOCK_PATH_TOKEN_SELECTOR}`,
@@ -438,7 +496,7 @@ const useFileReferenceInteractions = ({
 
       for (const candidate of Array.from(candidates)) {
         const rawCandidate = extractPathCandidateFromElement(candidate);
-        const resolved = getResolvedReference(rawCandidate, effectiveDirectory);
+        const resolved = getResolvedReference(rawCandidate, effectiveDirectory, homeDirectory);
         clearFileLinkAttributes(candidate);
 
         if (!resolved) {
@@ -464,7 +522,7 @@ const useFileReferenceInteractions = ({
           }
 
           const latestRawCandidate = extractPathCandidateFromElement(candidate);
-          const latestResolved = getResolvedReference(latestRawCandidate, effectiveDirectory);
+          const latestResolved = getResolvedReference(latestRawCandidate, effectiveDirectory, homeDirectory);
           if (!latestResolved || latestResolved.resolvedPath !== resolved.resolvedPath) {
             return;
           }
@@ -483,7 +541,7 @@ const useFileReferenceInteractions = ({
 
     const openFileReference = async (sourceElement: HTMLElement) => {
       const raw = sourceElement.getAttribute('data-openchamber-file-ref') || extractPathCandidateFromElement(sourceElement);
-      const resolved = getResolvedReference(raw, effectiveDirectory);
+      const resolved = getResolvedReference(raw, effectiveDirectory, homeDirectory);
       if (!resolved) {
         return;
       }
@@ -582,7 +640,7 @@ const useFileReferenceInteractions = ({
       container.removeEventListener('click', handleClick);
       container.removeEventListener('keydown', handleKeyDown);
     };
-  }, [containerRef, editor, effectiveDirectory, preferRuntimeEditor, enabled]);
+  }, [containerRef, editor, effectiveDirectory, homeDirectory, preferRuntimeEditor, enabled]);
 };
 
 const useMermaidInlineInteractions = ({

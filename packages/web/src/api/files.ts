@@ -1,15 +1,26 @@
 import type {
   DirectoryListResult,
+  DiskUsage,
   FileSearchQuery,
   FileSearchResult,
   FilesAPI,
 } from '@openchamber/ui/lib/api/types';
 import {
   FilesystemError,
+  filesystemErrorFromPayload,
   parseFilesystemErrorReason,
   type FilesystemErrorReason,
 } from '@openchamber/ui/lib/api/files-errors';
-import { runtimeFetch } from '@openchamber/ui/lib/runtime-fetch';
+import {
+  addRuntimeProxyHeaders,
+  buildRuntimeFetchUrl,
+  runtimeFetch,
+  sanitizeHeadersForBrowser,
+} from '@openchamber/ui/lib/runtime-fetch';
+import { buildRuntimeAuthHeaders, refreshRuntimeUrlAuthToken } from '@openchamber/ui/lib/runtime-auth';
+import { observeRuntimeAuthResponse } from '@openchamber/ui/lib/runtime-auth-expiry';
+import { getActiveRelayTunnel } from '@openchamber/ui/lib/relay/runtime-tunnel';
+import type { RuntimeUrlQuery } from '@openchamber/ui/lib/runtime-url';
 
 const normalizePath = (path: string): string => path.replace(/\\/g, '/');
 
@@ -65,6 +76,105 @@ const directoryHeaders = (getDirectory?: () => string | undefined, override?: st
   const directory = override || getDirectory?.();
   return directory ? { 'x-opencode-directory': directory } : undefined;
 };
+
+type UploadResponse = { ok: boolean; status: number; payload: unknown };
+
+const parseJsonText = (text: string): unknown => {
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    // Прокси может вернуть HTML-страницу ошибки — тогда сообщение возьмём из статуса.
+    return {};
+  }
+};
+
+// XHR нужен только ради upload.onprogress — у fetch нет прогресса отправки тела.
+// Повторяет то, что делает runtimeFetch для сетевого рантайма: базовый URL, query,
+// санитизация заголовков, auth-заголовки, ngrok-заголовок и учёт истечения сессии.
+const uploadWithProgress = async (
+  query: RuntimeUrlQuery,
+  headers: Record<string, string>,
+  body: Blob,
+  onProgress: (loaded: number, total: number) => void,
+): Promise<UploadResponse> => {
+  const url = buildRuntimeFetchUrl('/api/fs/upload', query);
+  const merged = await buildRuntimeAuthHeaders(sanitizeHeadersForBrowser(headers) ?? headers);
+  addRuntimeProxyHeaders(url, merged);
+
+  return new Promise<UploadResponse>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', url);
+    merged.forEach((value, key) => xhr.setRequestHeader(key, value));
+    xhr.upload.onprogress = (event) => {
+      onProgress(event.loaded, event.lengthComputable ? event.total : body.size);
+    };
+    xhr.onload = () => {
+      observeRuntimeAuthResponse(url, xhr.status);
+      resolve({
+        ok: xhr.status >= 200 && xhr.status < 300,
+        status: xhr.status,
+        payload: parseJsonText(xhr.responseText),
+      });
+    };
+    xhr.onerror = () => reject(new FilesystemError('Network error during upload', { reason: 'unknown' }));
+    xhr.onabort = () => reject(new FilesystemError('Upload aborted', { reason: 'unknown' }));
+    xhr.send(body);
+  });
+};
+
+type DownloadTransport = { kind: 'navigate'; urlToken?: string } | { kind: 'blob' };
+
+// Навигация по ссылке не несёт заголовков: bearer заменяем короткоживущим oc_url_token,
+// а relay-туннель и произвольные заголовки (Cloudflare Access и т.п.) ей недоступны —
+// тогда остаётся загрузка в Blob.
+const resolveDownloadTransport = async (): Promise<DownloadTransport> => {
+  if (getActiveRelayTunnel()) return { kind: 'blob' };
+  const headers = await buildRuntimeAuthHeaders();
+  let hasExtraHeaders = false;
+  headers.forEach((_value, key) => {
+    if (key.toLowerCase() !== 'authorization') hasExtraHeaders = true;
+  });
+  if (hasExtraHeaders) return { kind: 'blob' };
+  if (!headers.has('Authorization')) return { kind: 'navigate' };
+  try {
+    const urlToken = await refreshRuntimeUrlAuthToken();
+    return urlToken ? { kind: 'navigate', urlToken } : { kind: 'blob' };
+  } catch (error) {
+    console.warn('[files] url token mint failed, falling back to blob download', error);
+    return { kind: 'blob' };
+  }
+};
+
+const buildNavigationUrl = (path: string, query: Record<string, string | undefined>, urlToken?: string): string => {
+  return buildRuntimeFetchUrl(path, { ...query, oc_url_token: urlToken });
+};
+
+// Обычная навигация вместо fetch+Blob: браузер сам стримит файл на диск, без лимита памяти,
+// и встроенные браузеры Telegram/iOS умеют передать такую ссылку системе.
+const navigateToDownload = (url: string): void => {
+  const a = document.createElement('a');
+  a.href = url;
+  // Пустое значение: имя файла берётся из Content-Disposition сервера.
+  a.download = '';
+  a.rel = 'noopener';
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+};
+
+const isCapacitorNative = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  const capacitor = (window as typeof window & {
+    Capacitor?: { isNativePlatform?: () => boolean };
+  }).Capacitor;
+  return capacitor?.isNativePlatform?.() === true;
+};
+
+const readFiniteNumber = (value: unknown): number | null => (
+  typeof value === 'number' && Number.isFinite(value) ? value : null
+);
 
 export const createWebFilesAPI = ({ getDirectory }: WebFilesAPIOptions): FilesAPI => ({
   async listDirectory(path: string, options): Promise<DirectoryListResult> {
@@ -232,31 +342,41 @@ export const createWebFilesAPI = ({ getDirectory }: WebFilesAPIOptions): FilesAP
 
   async uploadFile(path: string, file: Blob, options): Promise<{ success: boolean; path: string }> {
     const target = normalizePath(path);
-    const response = await runtimeFetch('/api/fs/upload', {
-      method: 'POST',
-      query: {
-        path: target,
-        overwrite: options?.overwrite ? 'true' : undefined,
-      },
-      headers: {
-        'Content-Type': 'application/octet-stream',
-        ...directoryHeaders(getDirectory, options?.directory),
-      },
-      body: file,
-    });
+    const query = {
+      path: target,
+      overwrite: options?.overwrite ? 'true' : undefined,
+      onConflict: options?.onConflict,
+    };
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/octet-stream',
+      ...directoryHeaders(getDirectory, options?.directory),
+    };
+    const onProgress = options?.onProgress;
 
-    if (!response.ok) {
-      const error: WebFileUploadResponse = await response.json().catch(() => ({ error: response.statusText }));
-      throw new FilesystemError(error.error || 'Failed to upload file', {
-        reason: parseFilesystemErrorReason(error.reason),
-        status: response.status,
+    let outcome: UploadResponse;
+    // Через relay-туннель XHR не ходит — там остаётся fetch без промежуточного прогресса.
+    if (onProgress && typeof XMLHttpRequest !== 'undefined' && !getActiveRelayTunnel()) {
+      outcome = await uploadWithProgress(query, headers, file, onProgress);
+    } else {
+      const response = await runtimeFetch('/api/fs/upload', {
+        method: 'POST',
+        query,
+        headers,
+        body: file,
       });
+      const payload = await response.json().catch(() => (response.ok ? {} : { error: response.statusText }));
+      outcome = { ok: response.ok, status: response.status, payload };
+      if (response.ok) onProgress?.(file.size, file.size);
     }
 
-    const result: WebFileUploadResponse = await response.json().catch(() => ({}));
+    if (!outcome.ok) {
+      throw filesystemErrorFromPayload(outcome.payload, outcome.status, 'Failed to upload file');
+    }
+
+    const result = (outcome.payload ?? {}) as WebFileUploadResponse;
     return {
       success: Boolean(result.success),
-      path: result.path ? normalizePath(result.path) : target,
+      path: typeof result.path === 'string' && result.path ? normalizePath(result.path) : target,
     };
   },
 
@@ -314,6 +434,19 @@ export const createWebFilesAPI = ({ getDirectory }: WebFilesAPIOptions): FilesAP
 
   async downloadFile(path: string): Promise<void> {
     const target = normalizePath(path);
+    const directory = getDirectory?.() || undefined;
+    const capacitor = isCapacitorNative();
+    const transport = capacitor ? { kind: 'blob' as const } : await resolveDownloadTransport();
+
+    if (transport.kind === 'navigate') {
+      navigateToDownload(buildNavigationUrl('/api/fs/raw', {
+        path: target,
+        download: 'true',
+        directory,
+      }, transport.urlToken));
+      return;
+    }
+
     const response = await runtimeFetch('/api/fs/raw', {
       query: { path: target, download: true },
       headers: directoryHeaders(getDirectory),
@@ -324,11 +457,8 @@ export const createWebFilesAPI = ({ getDirectory }: WebFilesAPIOptions): FilesAP
 
     const blob = await response.blob();
     const filename = target.split('/').pop() || 'file';
-    const capacitor = (window as typeof window & {
-      Capacitor?: { isNativePlatform?: () => boolean };
-    }).Capacitor;
     const file = new File([blob], filename, { type: blob.type || 'application/octet-stream' });
-    if (capacitor?.isNativePlatform?.() === true && navigator.canShare?.({ files: [file] })) {
+    if (capacitor && navigator.canShare?.({ files: [file] })) {
       await navigator.share({ files: [file] });
       return;
     }
@@ -341,5 +471,69 @@ export const createWebFilesAPI = ({ getDirectory }: WebFilesAPIOptions): FilesAP
     a.click();
     document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(url), 100);
+  },
+
+  async downloadDirectory(path: string): Promise<void> {
+    const target = normalizePath(path);
+    const directory = getDirectory?.() || undefined;
+    // Предпроверка отдельным запросом: при навигации ошибку 413/429 браузер покажет
+    // голой страницей вместо понятного тоста.
+    const check = await runtimeFetch('/api/fs/archive', {
+      query: { path: target, check: '1', directory },
+      headers: directoryHeaders(getDirectory),
+    });
+    if (!check.ok) {
+      const payload = await check.json().catch(() => ({ error: check.statusText }));
+      throw filesystemErrorFromPayload(payload, check.status, 'Failed to prepare archive');
+    }
+
+    const transport = isCapacitorNative() ? { kind: 'blob' as const } : await resolveDownloadTransport();
+    if (transport.kind === 'navigate') {
+      navigateToDownload(buildNavigationUrl('/api/fs/archive', { path: target, directory }, transport.urlToken));
+      return;
+    }
+
+    const response = await runtimeFetch('/api/fs/archive', {
+      query: { path: target, directory },
+      headers: directoryHeaders(getDirectory),
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({ error: response.statusText }));
+      throw filesystemErrorFromPayload(payload, response.status, 'Failed to download archive');
+    }
+    const blob = await response.blob();
+    const filename = `${target.split('/').filter(Boolean).pop() || 'folder'}.zip`;
+    const file = new File([blob], filename, { type: 'application/zip' });
+    if (isCapacitorNative() && navigator.canShare?.({ files: [file] })) {
+      await navigator.share({ files: [file] });
+      return;
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 100);
+  },
+
+  async getDiskUsage(path: string): Promise<DiskUsage> {
+    const response = await runtimeFetch('/api/fs/disk', {
+      query: { path: normalizePath(path) },
+      headers: directoryHeaders(getDirectory),
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({ error: response.statusText }));
+      throw filesystemErrorFromPayload(payload, response.status, 'Failed to read disk usage');
+    }
+    const payload = (await response.json().catch(() => null)) as Record<string, unknown> | null;
+    const total = readFiniteNumber(payload?.total);
+    const free = readFiniteNumber(payload?.free);
+    if (total === null || free === null) {
+      throw new FilesystemError('Disk usage returned an invalid response', { reason: 'invalid-response' });
+    }
+    const used = readFiniteNumber(payload?.used) ?? Math.max(0, total - free);
+    return { total, free, used };
   },
 });

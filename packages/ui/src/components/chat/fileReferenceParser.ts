@@ -166,6 +166,68 @@ export const parseFileReference = (value: string): ParsedFileReference | null =>
     return { path: pathOnly };
 };
 
+/**
+ * Раскрывает `~` в домашнюю папку. Без известной домашней папки возвращает null:
+ * иначе `~/x` разрешился бы относительно проекта в несуществующий `<проект>/~/x`.
+ */
+export const expandHomeReferencePath = (path: string, homeDirectory: string | null | undefined): string | null => {
+    if (path !== '~' && !path.startsWith('~/')) {
+        return path;
+    }
+    const home = (homeDirectory ?? '').trim().replace(/\/+$/, '');
+    if (!home) {
+        return null;
+    }
+    return path === '~' ? home : `${home}${path.slice(1)}`;
+};
+
+export const fileUrlToReferenceCandidate = (value: string): string => {
+    const trimmed = value.trim();
+    if (!/^file:\/\//i.test(trimmed)) {
+        return value;
+    }
+    return localPathFromFileUrl(trimmed) ?? value;
+};
+
+const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// Путь в обычном тексте кончается на пробеле или кавычке/скобке; хвостовую
+// пунктуацию снимает trimPathCandidate, как и для остальных кандидатов.
+const TEXT_PATH_BODY = '[^\\s<>"\'`«»()\\[\\]{}]+';
+
+/**
+ * Пути в обычном тексте сообщения, которые стоит проверить: `~/…`, `<home>/…`
+ * и `file:///…`. Только с границы слова — так `https://host/home/dev/x` и прочие
+ * URL не дают ложных совпадений.
+ */
+export const findHomePathTokens = (
+    text: string,
+    homeDirectory: string | null | undefined,
+): Array<{ start: number; end: number; raw: string }> => {
+    const home = (homeDirectory ?? '').trim().replace(/\/+$/, '');
+    const prefixes = ['~/', 'file:///'];
+    if (home && home !== '/') {
+        prefixes.push(`${home}/`);
+    }
+    const pattern = new RegExp(
+        `(^|[\\s(\\[{"'«])((?:${prefixes.map(escapeRegExp).join('|')})${TEXT_PATH_BODY})`,
+        'g',
+    );
+    const tokens: Array<{ start: number; end: number; raw: string }> = [];
+    let match = pattern.exec(text);
+    while (match) {
+        const lead = match[1] ?? '';
+        const candidate = match[2] ?? '';
+        const raw = trimPathCandidate(candidate);
+        if (raw && !raw.endsWith('/')) {
+            const start = match.index + lead.length;
+            tokens.push({ start, end: start + raw.length, raw });
+        }
+        match = pattern.exec(text);
+    }
+    return tokens;
+};
+
 // Matches `path[:line[:col]]` or `path:start-end` inside shell/grep-style
 // output. Requires a file extension (1-8 alphanumerics) so plain words don't
 // qualify; the path itself must contain at least one extension-bearing

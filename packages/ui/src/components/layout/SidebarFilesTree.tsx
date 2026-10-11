@@ -46,6 +46,7 @@ import { FileTypeIcon } from '@/components/icons/FileTypeIcon';
 import { Icon } from "@/components/icon/Icon";
 import { getContextFileOpenFailureMessage, validateContextFileOpen } from '@/lib/contextFileOpenGuard';
 import { isFilesystemError } from '@/lib/api/files-errors';
+import { notifyDiskUsageChanged, useDownloadDirectory, useFilesUpload } from '@/hooks/useFilesPanelActions';
 import { notifyFileContentInvalidated } from '@/lib/fileContentInvalidation';
 import { isBrowserClientRuntime } from '@/lib/desktop';
 import { useI18n } from '@/lib/i18n';
@@ -255,6 +256,8 @@ interface FileRowProps {
     canReveal: boolean;
   };
   downloadFile?: (path: string) => Promise<void>;
+  downloadDirectory?: (path: string) => Promise<void>;
+  onUploadToDirectory?: (path: string) => void;
   onSelect: (node: FileNode) => void;
   onToggle: (path: string) => void;
   onRevealPath: (path: string) => void;
@@ -275,6 +278,8 @@ const FileRow: React.FC<FileRowProps> = ({
   canUpload,
   permissions,
   downloadFile,
+  downloadDirectory,
+  onUploadToDirectory,
   onSelect,
   onToggle,
   onRevealPath,
@@ -286,9 +291,10 @@ const FileRow: React.FC<FileRowProps> = ({
   const isDir = node.type === 'directory';
   const uploadDirectory = isDir ? node.path : getParentPath(node.path);
   const { canRename, canCreateFile, canCreateFolder, canDelete, canReveal } = permissions;
-  const canDownload = !isDir && Boolean(downloadFile);
+  const canDownload = isDir ? Boolean(downloadDirectory) : Boolean(downloadFile);
+  const canUploadHere = isDir && Boolean(onUploadToDirectory);
   const canRevealPath = canReveal && !isBrowserClient;
-  const hasMenuActions = canRename || canCreateFile || canCreateFolder || canDelete || canDownload || canRevealPath;
+  const hasMenuActions = canRename || canCreateFile || canCreateFolder || canDelete || canDownload || canUploadHere || canRevealPath;
 
   // Menu open state is local to each row so opening a menu in one row
   // never re-renders its siblings. Previously this state lived on the
@@ -350,6 +356,22 @@ const FileRow: React.FC<FileRowProps> = ({
           });
         }}>
           <Icon name="download" className="mr-2 h-4 w-4" /> {t(isBrowserClient ? 'sidebarFilesTree.menu.download' : 'sidebarFilesTree.menu.save')}
+        </Item>
+      )}
+      {isDir && downloadDirectory && (
+        <Item
+          title={t('multichamber.files.downloadFolderHint')}
+          onClick={(e: React.MouseEvent) => {
+            e.stopPropagation();
+            void downloadDirectory(node.path);
+          }}
+        >
+          <Icon name="folder-zip" className="mr-2 h-4 w-4" /> {t('multichamber.files.downloadFolder')}
+        </Item>
+      )}
+      {canUploadHere && onUploadToDirectory && (
+        <Item onClick={(e: React.MouseEvent) => { e.stopPropagation(); onUploadToDirectory(node.path); }}>
+          <Icon name="upload" className="mr-2 h-4 w-4" /> {t('multichamber.files.upload')}
         </Item>
       )}
       {canRevealPath && (
@@ -526,6 +548,8 @@ const areFileRowPropsEqual = (prev: FileRowProps, next: FileRowProps): boolean =
   && prev.canUpload === next.canUpload
   && prev.permissions === next.permissions
   && prev.downloadFile === next.downloadFile
+  && prev.downloadDirectory === next.downloadDirectory
+  && prev.onUploadToDirectory === next.onUploadToDirectory
   && prev.onSelect === next.onSelect
   && prev.onToggle === next.onToggle
   && prev.onRevealPath === next.onRevealPath
@@ -655,6 +679,7 @@ const SidebarFilesTreeContent: React.FC<{ visible: boolean }> = ({ visible }) =>
   const removeOpenPathsByPrefix = useFilesViewTabsStore((state) => state.removeOpenPathsByPrefix);
   const toggleExpandedPath = useFilesViewTabsStore((state) => state.toggleExpandedPath);
   const collapseAllExpandedPaths = useFilesViewTabsStore((state) => state.collapseAllExpandedPaths);
+  const expandPaths = useFilesViewTabsStore((state) => state.expandPaths);
   const contextTabs = useUIStore((state) => (root ? (state.contextPanelByDirectory[root]?.tabs ?? EMPTY_CONTEXT_TABS) : EMPTY_CONTEXT_TABS));
   const openContextFilePaths = React.useMemo(() => new Set(
     contextTabs
@@ -1009,6 +1034,32 @@ const SidebarFilesTreeContent: React.FC<{ visible: boolean }> = ({ visible }) =>
     openContextFile(root, node.path);
   }, [addOpenPath, files, openContextFile, root, setSelectedPath]);
 
+  const handleFilesUploaded = React.useCallback(async (directory: string, uploadedPaths: string[]) => {
+    if (!root) return;
+    const normalizedDirectory = normalizePath(directory);
+    await refreshDirectory(normalizedDirectory);
+    // Раскрываем цепочку папок до места загрузки, иначе новый файл окажется в свёрнутой ветке.
+    if (normalizedDirectory !== root && normalizedDirectory.startsWith(`${root}/`)) {
+      const segments = normalizedDirectory.slice(root.length + 1).split('/');
+      const ancestors = segments.map((_, index) => `${root}/${segments.slice(0, index + 1).join('/')}`);
+      expandPaths(root, ancestors);
+      await Promise.all(ancestors.map((path) => loadDirectory(path)));
+    }
+    if (uploadedPaths.length === 1) {
+      await handleOpenFile({ name: uploadedPaths[0].split('/').pop() ?? uploadedPaths[0], path: uploadedPaths[0], type: 'file' });
+    }
+  }, [expandPaths, handleOpenFile, loadDirectory, refreshDirectory, root]);
+  const filesUpload = useFilesUpload({ onUploaded: handleFilesUploaded });
+  const downloadDirectoryAction = useDownloadDirectory();
+  const uploadTargetDirectory = React.useMemo(() => {
+    if (!root) return '';
+    // Цель по умолчанию: папка открытого файла внутри проекта, иначе корень дерева.
+    if (selectedPath && selectedPath.startsWith(`${root}/`)) {
+      return getParentPath(selectedPath) || root;
+    }
+    return root;
+  }, [root, selectedPath]);
+
   const toggleDirectory = React.useCallback(async (dirPath: string) => {
     const normalized = normalizePath(dirPath);
     if (!root) return;
@@ -1071,6 +1122,9 @@ const SidebarFilesTreeContent: React.FC<{ visible: boolean }> = ({ visible }) =>
     try {
       if (uploadedPaths.length > 0) {
         notifyFileContentInvalidated({ runtimeKey: operationRuntime, paths: uploadedPaths });
+      }
+      if (uploadedCount > 0) {
+        notifyDiskUsageChanged();
       }
       if (uploadedCount > 0 && isCurrentDestination) {
         await refreshDirectory(directory);
@@ -1235,6 +1289,7 @@ const SidebarFilesTreeContent: React.FC<{ visible: boolean }> = ({ visible }) =>
         .then(async (result) => {
           if (result.success) {
             toast.success(t('sidebarFilesTree.toast.deletedSuccessfully'));
+            notifyDiskUsageChanged();
             await refreshDirectory(parentDir);
             if (root) {
               removeOpenPathsByPrefix(root, deletedPath);
@@ -1286,6 +1341,8 @@ const SidebarFilesTreeContent: React.FC<{ visible: boolean }> = ({ visible }) =>
             canUpload={canUpload && !isUploading}
             permissions={fileRowPermissions}
             downloadFile={files.downloadFile}
+            downloadDirectory={downloadDirectoryAction}
+            onUploadToDirectory={filesUpload.canUpload ? filesUpload.openPicker : undefined}
             onSelect={handleOpenFile}
             onToggle={toggleDirectory}
             onRevealPath={handleRevealPath}
@@ -1358,6 +1415,26 @@ const SidebarFilesTreeContent: React.FC<{ visible: boolean }> = ({ visible }) =>
             <TooltipContent side="bottom" sideOffset={6}>{t('sidebarFilesTree.actions.newFolderTitle')}</TooltipContent>
           </Tooltip>
         )}
+        {filesUpload.canUpload && uploadTargetDirectory ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="inline-flex flex-shrink-0">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => filesUpload.openPicker(uploadTargetDirectory)}
+                  disabled={filesUpload.isUploading}
+                  className="h-8 w-8 p-0 flex-shrink-0"
+                  aria-label={t('multichamber.files.upload')}
+                >
+                  <Icon name={filesUpload.isUploading ? 'loader-4' : 'upload'} className={cn('h-4 w-4', filesUpload.isUploading && 'animate-spin')} />
+                </Button>
+                <input {...filesUpload.inputProps} />
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" sideOffset={6}>{t('multichamber.files.uploadHint')}</TooltipContent>
+          </Tooltip>
+        ) : null}
         <Tooltip>
           <TooltipTrigger asChild>
             <span className="inline-flex flex-shrink-0">

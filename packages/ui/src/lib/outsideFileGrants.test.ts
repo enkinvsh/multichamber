@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test';
 
 import { initializeRuntimeEndpoint, switchRuntimeEndpoint } from './runtime-switch';
 import { getOutsideFileGrant, resolveOutsideFileReadOptions } from './outsideFileGrants';
+import { setMultichamberFsRootForTests } from './multichamber/lockdown';
 
 test('renews an expired outside-file grant before returning read options', async () => {
   let now = 1_000;
@@ -72,5 +73,25 @@ test('renews an expired outside-file grant before returning read options', async
     switchRuntimeEndpoint({ apiBaseUrl: 'http://127.0.0.1:57123/api', runtimeKey: 'local' });
     Date.now = originalNow;
     Object.defineProperty(globalThis, 'window', { configurable: true, value: originalWindow });
+  }
+});
+
+test('reads files under the MultiChamber fs root as workspace files', async () => {
+  setMultichamberFsRootForTests('/home/dev');
+  try {
+    expect(await resolveOutsideFileReadOptions('/home/dev/uploads/a.pdf', '/home/dev/projects/app', true))
+      .toEqual({ allowOutsideWorkspace: false });
+  } finally {
+    setMultichamberFsRootForTests(null);
+  }
+});
+
+test('keeps the outside-workspace mode for paths outside the MultiChamber fs root', async () => {
+  setMultichamberFsRootForTests('/home/dev');
+  try {
+    expect(await resolveOutsideFileReadOptions('/etc/hosts', '/home/dev/projects/app', true))
+      .toEqual({ allowOutsideWorkspace: true, outsideFileGrant: undefined });
+  } finally {
+    setMultichamberFsRootForTests(null);
   }
 });

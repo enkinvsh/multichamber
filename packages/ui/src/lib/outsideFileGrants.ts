@@ -1,5 +1,6 @@
 import { requestExistingFileAccess } from '@/lib/desktop';
 import { isFilePathWithinDirectory, normalizeFilePath } from '@/lib/path-utils';
+import { isPathWithinMultichamberFsRoot } from '@/lib/multichamber/lockdown';
 import { getRuntimeKey } from '@/lib/runtime-switch';
 
 type OutsideFileGrantEntry = {
@@ -102,9 +103,12 @@ export const resolveOutsideFileReadOptions = async (
   workspaceRoot: string,
   enabled: boolean,
 ): Promise<{ allowOutsideWorkspace: boolean; outsideFileGrant?: string }> => {
+  // Внутри корня MultiChamber сервер читает файл обычным путём; режим
+  // allowOutsideWorkspace там требовал бы desktop-грант и ломал чтение в вебе.
   const allowOutsideWorkspace = enabled
     && Boolean(workspaceRoot)
-    && !isFilePathWithinDirectory(path, workspaceRoot);
+    && !isFilePathWithinDirectory(path, workspaceRoot)
+    && !isPathWithinMultichamberFsRoot(path);
   if (!allowOutsideWorkspace) {
     return { allowOutsideWorkspace: false };
   }

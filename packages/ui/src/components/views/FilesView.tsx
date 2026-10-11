@@ -1,6 +1,6 @@
 import React from 'react';
 import { runtimeFetch } from '@/lib/runtime-fetch';
-import { useMultichamberLockdown } from '@/lib/multichamber/lockdown';
+import { useMultichamberFsRoot, useMultichamberLockdown } from '@/lib/multichamber/lockdown';
 
 import { toast } from '@/components/ui';
 import { copyTextToClipboard } from '@/lib/clipboard';
@@ -61,6 +61,8 @@ import { getOutsideFileGrant, resolveOutsideFileReadOptions } from '@/lib/outsid
 import { subscribeToFileContentInvalidation } from '@/lib/fileContentInvalidation';
 import { DiagramEditor } from '@/components/diagram';
 import { useRuntimeAPIs } from '@/hooks/useRuntimeAPIs';
+import { notifyDiskUsageChanged, useDownloadDirectory, useFilesUpload } from '@/hooks/useFilesPanelActions';
+import { DiskUsageLine } from '@/components/views/files/DiskUsageLine';
 import { EditorView } from '@codemirror/view';
 import type { Extension } from '@codemirror/state';
 import { useThemeSystem } from '@/contexts/useThemeSystem';
@@ -90,6 +92,10 @@ import { useI18n } from '@/lib/i18n';
 import { sessionEvents } from '@/lib/sessionEvents';
 import { syncScheduledTaskLoops } from '@/lib/scheduledTasksApi';
 import { useProjectsStore } from '@/stores/useProjectsStore';
+import { getOfficePreviewKind } from './office/officeFileKind';
+
+// Парсеры xlsx/docx грузятся только при открытии такого файла, чтобы не раздувать основной бандл.
+const OfficePreview = React.lazy(() => import('./office/OfficePreview'));
 
 type FileNode = {
   name: string;
@@ -362,6 +368,8 @@ interface FileRowProps {
     canReveal: boolean;
   };
   downloadFile?: (path: string) => Promise<void>;
+  downloadDirectory?: (path: string) => Promise<void>;
+  onUploadToDirectory?: (path: string) => void;
   contextMenuPath: string | null;
   setContextMenuPath: (path: string | null) => void;
   rightClickMenuPath: string | null;
@@ -384,6 +392,8 @@ const FileRow: React.FC<FileRowProps> = ({
   badge,
   permissions,
   downloadFile,
+  downloadDirectory,
+  onUploadToDirectory,
   contextMenuPath,
   setContextMenuPath,
   rightClickMenuPath,
@@ -396,9 +406,10 @@ const FileRow: React.FC<FileRowProps> = ({
   const { t } = useI18n();
   const isDir = node.type === 'directory';
   const { canRename, canCreateFile, canCreateFolder, canDelete, canReveal } = permissions;
-  const canDownload = !isDir && Boolean(downloadFile);
+  const canDownload = isDir ? Boolean(downloadDirectory) : Boolean(downloadFile);
+  const canUploadHere = isDir && Boolean(onUploadToDirectory);
   const canRevealPath = canReveal && !isBrowserClient;
-  const hasMenuActions = canRename || canCreateFile || canCreateFolder || canDelete || canDownload || canRevealPath;
+  const hasMenuActions = canRename || canCreateFile || canCreateFolder || canDelete || canDownload || canUploadHere || canRevealPath;
 
   const handleContextMenu = React.useCallback((event?: React.MouseEvent) => {
     if (!hasMenuActions) {
@@ -469,6 +480,22 @@ const FileRow: React.FC<FileRowProps> = ({
           });
         }}>
           <Icon name="download" className="mr-2 size-4" /> {t(isBrowserClient ? 'sidebarFilesTree.menu.download' : 'sidebarFilesTree.menu.save')}
+        </Item>
+      )}
+      {isDir && downloadDirectory && (
+        <Item
+          title={t('multichamber.files.downloadFolderHint')}
+          onClick={(e: React.MouseEvent) => {
+            e.stopPropagation();
+            void downloadDirectory(node.path);
+          }}
+        >
+          <Icon name="folder-zip" className="mr-2 size-4" /> {t('multichamber.files.downloadFolder')}
+        </Item>
+      )}
+      {canUploadHere && onUploadToDirectory && (
+        <Item onClick={(e: React.MouseEvent) => { e.stopPropagation(); onUploadToDirectory(node.path); }}>
+          <Icon name="upload" className="mr-2 size-4" /> {t('multichamber.files.upload')}
         </Item>
       )}
       {canRevealPath && (
@@ -884,7 +911,15 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full', visible = t
     }
   }, [openPaths, root, selectedPath, setSelectedPath]);
 
-  const selectedFileIsOutsideWorkspace = Boolean(root && selectedFilePath && !isPathWithinRoot(selectedFilePath, root));
+  const multichamberFsRoot = useMultichamberFsRoot();
+  // Файл из корня MultiChamber (например ~/uploads из чата другого проекта)
+  // сервер отдаёт как обычный: без режима «вне рабочей области» и с правкой.
+  const selectedFileIsOutsideWorkspace = Boolean(
+    root
+    && selectedFilePath
+    && !isPathWithinRoot(selectedFilePath, root)
+    && !(multichamberFsRoot && isPathWithinRoot(selectedFilePath, multichamberFsRoot)),
+  );
   const selectedOutsideFileGrant = selectedFileIsOutsideWorkspace ? getOutsideFileGrant(selectedFilePath) : undefined;
   const selectedFileReadOptions = React.useMemo(
     () => ({
@@ -1502,6 +1537,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full', visible = t
         .then(async (result) => {
           if (result.success) {
             toast.success(t('sidebarFilesTree.toast.deletedSuccessfully'));
+            notifyDiskUsageChanged();
             await refreshDirectory(parentDir);
             if (root) {
               removeOpenPathsByPrefix(root, deletedPath);
@@ -2055,6 +2091,31 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full', visible = t
     }
   }, [ensurePathVisible, isDirty, isMobile, root, setSelectedPath]);
 
+  const handleFilesUploaded = React.useCallback(async (directory: string, uploadedPaths: string[]) => {
+    await refreshDirectory(directory);
+    // Один файл открываем сразу, при пачке только раскрываем папку, чтобы не дёргать просмотрщик.
+    if (uploadedPaths.length === 1) {
+      await handleSelectFile(toFileNode(uploadedPaths[0]));
+      return;
+    }
+    if (uploadedPaths[0]) {
+      await ensurePathVisible(uploadedPaths[0], false);
+    }
+  }, [ensurePathVisible, handleSelectFile, refreshDirectory, toFileNode]);
+  const filesUpload = useFilesUpload({ onUploaded: handleFilesUploaded });
+  const downloadDirectoryAction = useDownloadDirectory();
+  const uploadTargetDirectory = React.useMemo(() => {
+    if (!root) return '';
+    // Цель по умолчанию: папка открытого файла, если он внутри проекта, иначе корень дерева.
+    if (selectedFilePath && isPathWithinRoot(selectedFilePath, root)) {
+      const parent = selectedFilePath.split('/').slice(0, -1).join('/');
+      if (parent && isPathWithinRoot(parent, root)) {
+        return parent;
+      }
+    }
+    return root;
+  }, [root, selectedFilePath]);
+
   React.useEffect(() => {
     if (!selectedFile?.path) {
       return;
@@ -2397,6 +2458,8 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full', visible = t
             badge={isDir ? getFolderBadge(node.path) : undefined}
             permissions={fileRowPermissions}
             downloadFile={files.downloadFile}
+            downloadDirectory={downloadDirectoryAction}
+            onUploadToDirectory={filesUpload.canUpload ? filesUpload.openPicker : undefined}
             contextMenuPath={contextMenuPath}
             setContextMenuPath={setContextMenuPath}
             rightClickMenuPath={rightClickMenuPath}
@@ -2433,6 +2496,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full', visible = t
     && (isBinaryFile(selectedFile.path) || contentDetectedBinary)
   );
   const isUnsupportedBinary = isSelectedBinary && !isSelectedImage && !isSelectedPdf;
+  const selectedOfficeKind = selectedFile?.path ? getOfficePreviewKind(selectedFile.path) : null;
   const pendingNavigationTargetPath = React.useMemo(
     () => normalizePath(pendingFileNavigation?.path ?? ''),
     [pendingFileNavigation?.path],
@@ -3106,6 +3170,52 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full', visible = t
       />
     </div>
   ), [pdfSrc, pdfPreviewNonce]);
+
+  const selectedOfficePath = selectedOfficeKind && selectedFile?.path ? selectedFile.path : '';
+  const fetchOfficeFile = React.useCallback(async (signal: AbortSignal): Promise<Response> => {
+    const readOptions = await resolveFileReadOptions(selectedOfficePath);
+    // Десктоп читает файлы через свой мост, а не через HTTP: повторяем ветку картинок.
+    if (files.readFileBinary) {
+      const { dataUrl } = await files.readFileBinary(selectedOfficePath, readOptions);
+      return fetch(dataUrl, { signal });
+    }
+    return runtimeFetch('/api/fs/raw', {
+      signal,
+      query: {
+        path: selectedOfficePath,
+        allowOutsideWorkspace: readOptions.allowOutsideWorkspace ? 'true' : undefined,
+        outsideFileGrant: readOptions.outsideFileGrant,
+        directory: root || undefined,
+      },
+    });
+  }, [files, resolveFileReadOptions, root, selectedOfficePath]);
+
+  const handleOfficeDownload = React.useCallback(() => {
+    const fn = files.downloadFile;
+    if (!fn || !selectedOfficePath) return;
+    void fn(selectedOfficePath).catch((error) => {
+      console.error('Download failed:', error);
+      toast.error(t('sidebarFilesTree.toast.operationFailed'));
+    });
+  }, [files.downloadFile, selectedOfficePath, t]);
+
+  const renderOfficePreview = () => (selectedOfficeKind && selectedOfficePath ? (
+    <React.Suspense
+      fallback={(
+        <div className="flex h-full items-center justify-center gap-2 typography-ui text-muted-foreground">
+          <Icon name="loader-4" className="size-4 animate-spin" />
+          {t('filesView.state.loading')}
+        </div>
+      )}
+    >
+      <OfficePreview
+        kind={selectedOfficeKind}
+        sourceKey={`${root}|${selectedOfficePath}|${fileContentRevision}`}
+        fetchFile={fetchOfficeFile}
+        onDownload={files.downloadFile ? handleOfficeDownload : undefined}
+      />
+    </React.Suspense>
+  ) : null);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -3935,6 +4045,8 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full', visible = t
             </div>
           ) : isSelectedPdf ? (
             renderPdfPreview(selectedFile)
+          ) : isUnsupportedBinary && selectedOfficeKind ? (
+            renderOfficePreview()
           ) : isUnsupportedBinary ? (
             <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
               <div className="typography-ui-header text-foreground">{t('filesView.editor.cannotPreviewBinary')}</div>
@@ -4260,6 +4372,26 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full', visible = t
             </TooltipTrigger>
             <TooltipContent side="bottom" sideOffset={6}>{t('filesView.tree.actions.newFolderTitle')}</TooltipContent>
           </Tooltip>
+          {filesUpload.canUpload && uploadTargetDirectory ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex flex-shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => filesUpload.openPicker(uploadTargetDirectory)}
+                    disabled={filesUpload.isUploading}
+                    className="size-8 p-0 flex-shrink-0"
+                    aria-label={t('multichamber.files.upload')}
+                  >
+                    <Icon name={filesUpload.isUploading ? 'loader-4' : 'upload'} className={cn('size-4', filesUpload.isUploading && 'animate-spin')} />
+                  </Button>
+                  <input {...filesUpload.inputProps} />
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" sideOffset={6}>{t('multichamber.files.uploadHint')}</TooltipContent>
+            </Tooltip>
+          ) : null}
           <Tooltip>
             <TooltipTrigger asChild>
               <span className="inline-flex flex-shrink-0">
@@ -4320,6 +4452,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full', visible = t
           )}
         </ul>
       </ScrollableOverlay>
+      <DiskUsageLine path={root} className="border-t border-border/40 px-3 py-1.5" />
     </section>
   ) : null;
 
@@ -4354,6 +4487,8 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full', visible = t
             </div>
           ) : isSelectedPdf ? (
             renderPdfPreview(selectedFile)
+          ) : isUnsupportedBinary && selectedOfficeKind ? (
+            renderOfficePreview()
           ) : isUnsupportedBinary ? (
             <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
               <div className="typography-ui-header text-foreground">{t('filesView.editor.cannotPreviewBinary')}</div>

@@ -249,6 +249,8 @@ const fakeUseUIStore = Object.assign(
 );
 mock.module('@/stores/useUIStore', () => ({ useUIStore: fakeUseUIStore }));
 mock.module('@/hooks/useEffectiveDirectory', () => ({ useEffectiveDirectory: () => null }));
+mock.module('@/stores/useDirectoryStore', () => ({ useDirectoryStore: <T,>(selector: (state: { homeDirectory: string }) => T) => selector({ homeDirectory: '/home/dev' }) }));
+mock.module('@/stores/useDirectoryStore', () => ({ useDirectoryStore: <T,>(selector: (state: { homeDirectory: string }) => T) => selector({ homeDirectory: '/home/dev' }) }));
 mock.module('@/hooks/useRuntimeAPIs', () => ({ useRuntimeAPIs: () => ({ editor: undefined, runtime: { isVSCode: false } }) }));
 mock.module('@/lib/desktop', () => ({ isDesktopLocalOriginActive: () => false, isDesktopShell: () => false, isVSCodeRuntime: () => false }));
 mock.module('@/lib/multichamber/browser', () => ({ openExternalLinkInLockdown: (url: string, openExternal: (target: string) => void) => openExternal(url) }));

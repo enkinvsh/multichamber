@@ -15,6 +15,8 @@ import {
     isDocumentAttachmentFilename,
     type AttachmentInputModality,
 } from '@/sync/attachment-files';
+import { describeUploadFailure, saveAttachmentsToDisk, buildSavedAttachmentsNotice } from '@/sync/attachment-disk';
+import { formatHumanSize } from '@/hooks/useFilesPanelActions';
 import type { AttachedFile } from '@/stores/types/sessionTypes';
 import * as sessionActions from '@/sync/session-actions';
 // Guest surfaces load on demand: VS Code and mobile never mount them, and the
@@ -583,7 +585,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     const isExpandedInput = !isBtwActive && persistedExpandedInput;
     const setExpandedInput = useUIStore((state) => state.setExpandedInput);
     const setTimelineDialogOpen = useUIStore((state) => state.setTimelineDialogOpen);
-    const { git: runtimeGit, vscode: vscodeApi, linear: runtimeLinear } = useRuntimeAPIs();
+    const { git: runtimeGit, vscode: vscodeApi, linear: runtimeLinear, files: runtimeFiles } = useRuntimeAPIs();
+    const canSaveToDisk = Boolean(runtimeFiles.uploadFile);
     const cycleAgentShortcutOverride = useUIStore((state) => state.shortcutOverrides.cycle_agent);
     const cycleAgentShortcut = React.useMemo(() => (
         getEffectiveShortcutCombo('cycle_agent', cycleAgentShortcutOverride ? { cycle_agent: cycleAgentShortcutOverride } : undefined)
@@ -638,7 +641,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
 
         if (!inputModalities || filesToCheck.length === 0) return;
 
-        const incompatibleFiles = getUnsupportedAttachmentInputs(filesToCheck, inputModalities);
+        // Файлы только для диска модели не уходят, предупреждать о модальности незачем.
+        const incompatibleFiles = getUnsupportedAttachmentInputs(filesToCheck.filter((file) => !file.diskOnly), inputModalities);
         if (incompatibleFiles.length === 0) return;
 
         const unsupportedModalities = Array.from(new Set(incompatibleFiles.map(({ modality }) => modality)));
@@ -811,6 +815,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
 
     const sanitizeAttachmentsForSend = React.useCallback(
         (files: readonly AttachedFile[] | undefined): AttachedFile[] => [...(files ?? [])]
+            .filter((file) => !file.diskOnly)
             .map((file) => ({
                 ...file,
                 dataUrl: file.source === 'server' && file.serverPath
@@ -819,6 +824,62 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
             })),
         [],
     );
+
+    // Пока файлы грузятся, повторный Enter не должен отправить сообщение второй раз.
+    const savingAttachmentsRef = React.useRef(false);
+
+    /**
+     * Сохраняет файлы пользователя в ~/uploads до отправки и возвращает текст
+     * с путями для агента. При сбое сообщение не уходит: черновик и вложения
+     * остаются в композере, а причина показывается тостом.
+     */
+    const saveAttachmentsBeforeSend = React.useCallback(async (
+        files: readonly AttachedFile[],
+    ): Promise<{ ok: true; notice: string | null } | { ok: false }> => {
+        if (!files.some((file) => file.diskFile)) return { ok: true, notice: null };
+        if (!runtimeFiles.uploadFile) return { ok: true, notice: null };
+        if (savingAttachmentsRef.current) return { ok: false };
+
+        const homeDirectory = useDirectoryStore.getState().homeDirectory;
+        if (!homeDirectory) {
+            toast.error(t('multichamber.chat.attachments.homeUnknown'));
+            return { ok: false };
+        }
+
+        savingAttachmentsRef.current = true;
+        const toastId = 'chat-attachments-saving';
+        // Мелкие файлы сохраняются мгновенно — индикатор нужен только когда ожидание заметно.
+        const slowTimer = window.setTimeout(() => {
+            toast.loading(t('multichamber.chat.attachments.saving'), { id: toastId });
+        }, 400);
+        try {
+            const result = await saveAttachmentsToDisk(files, {
+                homeDirectory,
+                upload: (path, file, options) => {
+                    if (!runtimeFiles.uploadFile) throw new Error('uploadFile is not available');
+                    return runtimeFiles.uploadFile(path, file, options);
+                },
+            });
+            if (result.ok) return { ok: true, notice: buildSavedAttachmentsNotice(result.saved) };
+
+            const failure = describeUploadFailure(result.error);
+            const name = result.file.name;
+            if (failure.kind === 'file_too_large') {
+                toast.error(failure.limitBytes
+                    ? t('multichamber.files.error.fileTooLarge', { name, limit: formatHumanSize(failure.limitBytes, t) })
+                    : t('multichamber.chat.attachments.tooLargeNoLimit', { name }));
+            } else if (failure.kind === 'insufficient_storage') {
+                toast.error(t('multichamber.chat.attachments.insufficientStorage'));
+            } else {
+                toast.error(t('multichamber.chat.attachments.saveFailed', { name, message: failure.message }));
+            }
+            return { ok: false };
+        } finally {
+            window.clearTimeout(slowTimer);
+            toast.dismiss(toastId);
+            savingAttachmentsRef.current = false;
+        }
+    }, [runtimeFiles, t]);
 
     const resolveInlineFileMention = React.useCallback((mentionPath: string): { serverPath: string; filename: string } | null => {
         const kind = classifyMention(mentionPath, {
@@ -1253,6 +1314,9 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
             toast.error(t('chat.chatInput.toast.attachNamedFailed', { name: documentMentions.filename }));
             return;
         }
+        const originalAttachments = attachedFiles;
+        const diskSave = await saveAttachmentsBeforeSend(originalAttachments);
+        if (!diskSave.ok) return;
         const { sanitizedText, mention } = parseAgentMentions(messageToQueue, agents);
         const { attachments: mentionAttachments } = extractInlineFileMentions(sanitizedText, documentMentions.prepared);
         const availableSkillNames = new Set(
@@ -1268,7 +1332,10 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         const linked: LinkedReferences = { issue: linkedIssue, pr: linkedPr, linear: linkedLinearIssue };
         const context = buildComposerContext({
             inlineComments: drafts,
-            syntheticTexts: syntheticParts.map((part) => part.text),
+            syntheticTexts: [
+                ...syntheticParts.map((part) => part.text),
+                ...(diskSave.notice ? [diskSave.notice] : []),
+            ],
             linkedIssue: linked.issue
                 ? { number: linked.issue.number, title: linked.issue.title, url: linked.issue.url, contextText: linked.issue.contextText }
                 : null,
@@ -1302,7 +1369,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         // above, so nothing later needs them.
         setMessage('');
         confirmedMentionsRef.current.clear();
-        if (composerAttachments.length > 0) {
+        if (originalAttachments.length > 0) {
             clearAttachedFiles(chatDraftIdentity);
         }
         setLinkedIssue(null);
@@ -1338,8 +1405,12 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
             } else {
                 useInputStore.getState().setPendingInputText(messageToQueue, 'append');
             }
-            if (composerAttachments.length > 0) {
-                useInputStore.getState().restoreAttachedFiles(composerAttachments, chatDraftIdentity);
+            if (originalAttachments.length > 0) {
+                // Файлы только для диска выпали из composerAttachments — возвращаем и их.
+                const attachmentsToRestore = originalAttachments.some((file) => file.diskOnly)
+                    ? originalAttachments
+                    : composerAttachments;
+                useInputStore.getState().restoreAttachedFiles(attachmentsToRestore, chatDraftIdentity);
             }
             if (draftTarget && drafts.length > 0) {
                 useInlineCommentDraftStore.getState().restoreDrafts(draftTarget, drafts);
@@ -1353,7 +1424,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
             return;
         }
         recordLinkedReferences(queueSessionId, queueTarget.directory, linked);
-        }, [getCurrentInputSnapshot, currentSessionId, messageQueueTarget, inputMode, hasDrafts, guestCommands, attachedFiles, sanitizeAttachmentsForSend, prepareDocumentMentions, extractInlineFileMentions, agents, currentDirectory, consumePendingSyntheticParts, inlineDraftTarget, consumeDrafts, linkedIssue, linkedPr, linkedLinearIssue, linkedGuestIssue, scrollToLatest, clearAttachedFiles, chatDraftIdentity, isMobile, addToQueue, currentProviderId, currentModelId, currentAgentName, currentVariant, t]);
+        }, [getCurrentInputSnapshot, currentSessionId, messageQueueTarget, inputMode, hasDrafts, guestCommands, attachedFiles, sanitizeAttachmentsForSend, saveAttachmentsBeforeSend, prepareDocumentMentions, extractInlineFileMentions, agents, currentDirectory, consumePendingSyntheticParts, inlineDraftTarget, consumeDrafts, linkedIssue, linkedPr, linkedLinearIssue, linkedGuestIssue, scrollToLatest, clearAttachedFiles, chatDraftIdentity, isMobile, addToQueue, currentProviderId, currentModelId, currentAgentName, currentVariant, t]);
 
     /** Put the context a queued message was captured with back on the composer chips. */
     const restoreQueuedContext = React.useCallback((context: readonly QueuedContextPart[]) => {
@@ -1698,6 +1769,10 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         }
         const preparedDocumentMentions = documentMentions.prepared;
 
+        // До изъятия очереди: сбой сохранения должен оставить и очередь, и композер нетронутыми.
+        const diskSave = queuedOnly ? { ok: true as const, notice: null } : await saveAttachmentsBeforeSend(attachedFiles);
+        if (!diskSave.ok) return;
+
         // The composer delivers these itself, so they leave the queue now — the
         // queue's own delivery (server-side, or the auto-send hook in VS Code)
         // skips anything already in flight, and a message already being
@@ -1766,6 +1841,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
             syntheticTexts: [
                 ...buildBtwSyntheticTexts({ isBtwActive, isPromotedBtwSession }),
                 ...(syntheticParts?.map((part) => part.text) ?? []),
+                ...(diskSave.notice ? [diskSave.notice] : []),
             ],
             linkedIssue: !isBtwActive && linkedIssue
                 ? { number: linkedIssue.number, title: linkedIssue.title, url: linkedIssue.url, contextText: linkedIssue.contextText }
@@ -2692,7 +2768,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                 const file = createPastedContextFile(pastedText, filename);
                 pendingPastedAttachmentFilenamesRef.current.add(filename);
                 try {
-                    await addAttachedFile(file);
+                    // Вставленный текст — часть промпта, а не файл пользователя: в ~/uploads ему не место.
+                    await addAttachedFile(file, { modelOnly: true });
                 } catch (error) {
                     console.error('Clipboard text attach failed', error);
                     toast.error(
@@ -3994,7 +4071,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
             multiple
             className="hidden"
             onChange={handleLocalFileSelect}
-            accept={ATTACHMENT_ACCEPT}
+            accept={canSaveToDisk ? undefined : ATTACHMENT_ACCEPT}
         />
 
         {/* Mobile attachment sheet: replaces the dropdown (which stole focus and

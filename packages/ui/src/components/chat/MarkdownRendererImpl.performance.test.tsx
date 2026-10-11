@@ -290,6 +290,7 @@ const initializePerformanceDom = async (): Promise<void> => {
   mock.module('@/contexts/useThemeSystem', () => ({ useOptionalThemeSystem: () => null }));
   mock.module('@/stores/useUIStore', () => ({ useUIStore: Object.assign((selector: (state: typeof fakeState) => UIStateSelection) => selector(fakeState), { getState: () => fakeState }) }));
   mock.module('@/hooks/useEffectiveDirectory', () => ({ useEffectiveDirectory: () => null }));
+  mock.module('@/stores/useDirectoryStore', () => ({ useDirectoryStore: <T,>(selector: (state: { homeDirectory: string }) => T) => selector({ homeDirectory: '/home/dev' }) }));
   mock.module('@/hooks/useRuntimeAPIs', () => ({ useRuntimeAPIs: () => ({ editor: undefined, runtime: { isVSCode: false } }) }));
   mock.module('@/lib/runtime-fetch', () => ({ runtimeFetch: async () => ({ ok: false }) }));
   mock.module('@/lib/url', () => ({ getUrlScheme: () => null, isAppLinkUrl: () => false, isExternalHttpUrl: () => false, openConfirmedAppLinkUrl: async () => false, openExternalUrl: async () => undefined, getExternalFaviconUrl: () => null, isLoopbackHttpUrl: () => false }));
