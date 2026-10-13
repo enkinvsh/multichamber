@@ -36,8 +36,11 @@ const readPreviewOpenUrl = (raw) => {
 /**
  * Что UI нужно знать об этом контейнере MultiChamber.
  * `dictation`: диктовка идёт через управляемый STT, и UI показывает микрофон даже в lockdown.
+ * `ownClaude`: слот работает на подписке Claude владельца, поэтому UI открывает страницы
+ * Claude и Usage даже в lockdown. Флаг только про видимость: сами вход и токен живут на
+ * фронте zeny, контейнер их не видит.
  * @param {NodeJS.ProcessEnv} env
- * @returns {{ lockdown: boolean, fsRoot: string | null, previewOpenUrl: string | null, dictation: boolean }}
+ * @returns {{ lockdown: boolean, fsRoot: string | null, previewOpenUrl: string | null, dictation: boolean, ownClaude: boolean }}
  */
 export const readMultichamberPolicy = (env = process.env) => {
   const fsRoot = rootSchema.parse(env.MULTICHAMBER_FS_ROOT);
@@ -46,6 +49,7 @@ export const readMultichamberPolicy = (env = process.env) => {
     fsRoot: fsRoot.length > 0 ? fsRoot : null,
     previewOpenUrl: readPreviewOpenUrl(env.MULTICHAMBER_PREVIEW_OPEN_URL),
     dictation: readManagedStt(env) !== null,
+    ownClaude: env.MULTICHAMBER_OWN_CLAUDE === '1',
   };
 };
 

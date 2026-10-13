@@ -13,13 +13,20 @@ afterEach(() => {
 describe('readMultichamberPolicy', () => {
   it('reports lockdown and the fs root from the environment', () => {
     expect(readMultichamberPolicy({ MULTICHAMBER_LOCKDOWN: '1', MULTICHAMBER_FS_ROOT: ' /home/dev ' }))
-      .toEqual({ lockdown: true, fsRoot: '/home/dev', previewOpenUrl: null, dictation: false });
+      .toEqual({ lockdown: true, fsRoot: '/home/dev', previewOpenUrl: null, dictation: false, ownClaude: false });
   });
 
   it('reports no lockdown and no root when the variables are missing or blank', () => {
-    expect(readMultichamberPolicy({})).toEqual({ lockdown: false, fsRoot: null, previewOpenUrl: null, dictation: false });
+    expect(readMultichamberPolicy({})).toEqual({ lockdown: false, fsRoot: null, previewOpenUrl: null, dictation: false, ownClaude: false });
     expect(readMultichamberPolicy({ MULTICHAMBER_LOCKDOWN: 'true', MULTICHAMBER_FS_ROOT: '  ' }))
-      .toEqual({ lockdown: false, fsRoot: null, previewOpenUrl: null, dictation: false });
+      .toEqual({ lockdown: false, fsRoot: null, previewOpenUrl: null, dictation: false, ownClaude: false });
+  });
+
+  it('reports own Claude only when MULTICHAMBER_OWN_CLAUDE is exactly 1', () => {
+    expect(readMultichamberPolicy({ MULTICHAMBER_LOCKDOWN: '1', MULTICHAMBER_OWN_CLAUDE: '1' }).ownClaude).toBe(true);
+    for (const value of ['0', 'true', ' 1', '', undefined]) {
+      expect(readMultichamberPolicy({ MULTICHAMBER_LOCKDOWN: '1', MULTICHAMBER_OWN_CLAUDE: value }).ownClaude).toBe(false);
+    }
   });
 
   it('reports dictation only when a valid managed STT endpoint is configured', () => {
@@ -75,5 +82,10 @@ describe('policy route', () => {
 
   it('reports no dictation without managed STT', async () => {
     expect((await policyOf({ MULTICHAMBER_LOCKDOWN: '1' })).dictation).toBe(false);
+  });
+
+  it('reports own Claude when the slot runs on the owner subscription', async () => {
+    expect((await policyOf({ MULTICHAMBER_LOCKDOWN: '1', MULTICHAMBER_OWN_CLAUDE: '1' })).ownClaude).toBe(true);
+    expect((await policyOf({ MULTICHAMBER_LOCKDOWN: '1' })).ownClaude).toBe(false);
   });
 });
