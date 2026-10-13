@@ -145,3 +145,81 @@ describe('Claude quota provider', () => {
     expect(result.error).toBe('socket hang up');
   });
 });
+
+describe('Claude quota provider behind the zeny proxy', () => {
+  const MANAGED_URL = 'http://10.88.0.1:8320/usage';
+
+  // Прокси отвечает как Anthropic /api/oauth/usage в старом формате с окнами по полям.
+  const MANAGED_PAYLOAD = {
+    five_hour: { utilization: 12, resets_at: '2026-10-13T20:00:00Z' },
+    seven_day: { utilization: 40, resets_at: '2026-10-17T09:00:00Z' },
+    seven_day_opus: { utilization: 100, resets_at: '2026-10-17T09:00:00Z' },
+    seven_day_sonnet: null,
+  };
+
+  beforeEach(() => {
+    vi.stubEnv('MULTICHAMBER_CLAUDE_USAGE_URL', MANAGED_URL);
+    credential.mockReturnValue(null);
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('is configured by the proxy address alone', () => {
+    expect(isConfigured()).toBe(true);
+  });
+
+  it('asks the proxy without any token and reads the Anthropic usage format', async () => {
+    credential.mockReturnValue(CREDENTIAL);
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(MANAGED_PAYLOAD));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await fetchQuota();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe(MANAGED_URL);
+    expect(new Headers(init.headers).has('authorization')).toBe(false);
+    expect(result.ok).toBe(true);
+    expect(result.configured).toBe(true);
+    expect(result.usage.windows['5h'].usedPercent).toBe(12);
+    expect(result.usage.windows['7d'].usedPercent).toBe(40);
+  });
+
+  it('reports not configured when the proxy has no connected account', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(errorResponse(404)));
+
+    const result = await fetchQuota();
+
+    expect(result.ok).toBe(false);
+    expect(result.configured).toBe(false);
+    expect(result.usage).toBeNull();
+  });
+
+  it('does not send the owner to Claude Code when access was revoked', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(errorResponse(401)));
+
+    const result = await fetchQuota();
+
+    expect(result.ok).toBe(false);
+    expect(result.configured).toBe(true);
+    expect(result.error).toBe('Claude access was revoked. Connect Claude again in the zeny cabinet: zenyweb.com/cabinet/claude.');
+    expect(result.error).not.toContain('Claude Code');
+  });
+
+  it('drops the cached values once the proxy says the account is gone', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(MANAGED_PAYLOAD))
+      .mockResolvedValueOnce(errorResponse(404))
+      .mockResolvedValueOnce(errorResponse(429));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await fetchQuota();
+    await fetchQuota();
+    const afterReconnect = await fetchQuota();
+
+    expect(afterReconnect.ok).toBe(false);
+    expect(afterReconnect.usage).toBeNull();
+  });
+});
