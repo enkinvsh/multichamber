@@ -655,6 +655,13 @@ const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     keywords: ['models', 'quota', 'limits', 'tokens'],
   },
   {
+    id: 'claude.account',
+    page: 'claude',
+    titleKey: 'multichamber.claude.section.account',
+    descriptionKey: 'multichamber.claude.page.description',
+    keywords: ['claude', 'anthropic', 'subscription', 'pro', 'max', 'sonnet', 'opus', 'limits', 'connect', 'disconnect'],
+  },
+  {
     id: 'projects.name',
     page: 'projects',
     titleKey: 'settings.projects.page.field.projectName',

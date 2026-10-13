@@ -24,8 +24,9 @@ import { CommandsSidebar } from '@/components/sections/commands/CommandsSidebar'
 import { CommandsPage } from '@/components/sections/commands/CommandsPage';
 import { McpSidebar } from '@/components/sections/mcp/McpSidebar';
 import { McpPage } from '@/components/sections/mcp/McpPage';
-import { useMultichamberLockdown } from '@/lib/multichamber/lockdown';
+import { useMultichamberLockdown, useMultichamberOwnClaude } from '@/lib/multichamber/lockdown';
 import { getMultichamberBrandName } from '@/lib/multichamber/brand';
+import { MultichamberClaudePage } from '@/components/multichamber/MultichamberClaudePage';
 import { PluginsSidebar, PluginsPage } from '@/components/sections/plugins';
 import { usePluginsStore } from '@/stores/usePluginsStore';
 import { SkillsSidebar } from '@/components/sections/skills/SkillsSidebar';
@@ -120,6 +121,7 @@ const pageOrder: SettingsPageSlug[] = [
   'git',
   // 'opencode' group — OpenCode
   'providers',
+  'claude',
   'agents',
   'behavior',
   'commands',
@@ -136,10 +138,16 @@ const NAV_GROUP_ORDER = ['general', 'projects', 'opencode', 'content'] as const;
 
 const ADD_PROVIDER_SETTINGS_ID = '__add_provider__';
 
-function buildRuntimeContext(isDesktop: boolean, isMobile: boolean, routingAvailable: boolean, multichamberLockdown: boolean): SettingsRuntimeContext {
+function buildRuntimeContext(
+  isDesktop: boolean,
+  isMobile: boolean,
+  routingAvailable: boolean,
+  multichamberLockdown: boolean,
+  multichamberOwnClaude: boolean,
+): SettingsRuntimeContext {
   const isVSCode = isVSCodeRuntime();
   const isWeb = !isDesktop && isWebRuntime();
-  return { isVSCode, isWeb, isDesktop, isMobile, routingAvailable, multichamberLockdown };
+  return { isVSCode, isWeb, isDesktop, isMobile, routingAvailable, multichamberLockdown, multichamberOwnClaude };
 }
 
 function isPageAvailable(page: SettingsPageMeta, ctx: SettingsRuntimeContext): boolean {
@@ -204,6 +212,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, forceMobile
   const openSettingsShortcutOverride = useUIStore((state) => state.shortcutOverrides.open_settings);
   const settingsSlug = resolveSettingsSlug(settingsPageRaw);
   const multichamberLockdown = useMultichamberLockdown();
+  const multichamberOwnClaude = useMultichamberOwnClaude();
 
   const [mobileStage, setMobileStage] = React.useState<MobileStage>(initialMobileStage);
   // Seed with the mount-time slug when opening at the nav stage: the slug
@@ -254,8 +263,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, forceMobile
 
   const routingAvailable = useUIStore((state) => state.routingFeatureAvailable);
   const runtimeCtx = React.useMemo(
-    () => buildRuntimeContext(isDesktopApp, isMobile, routingAvailable, multichamberLockdown),
-    [isDesktopApp, isMobile, routingAvailable, multichamberLockdown],
+    () => buildRuntimeContext(isDesktopApp, isMobile, routingAvailable, multichamberLockdown, multichamberOwnClaude),
+    [isDesktopApp, isMobile, routingAvailable, multichamberLockdown, multichamberOwnClaude],
   );
 
   const visiblePages = React.useMemo(() => {
@@ -373,6 +382,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, forceMobile
         return t('settings.page.remoteInstances.title');
       case 'providers':
         return t('settings.page.providers.title');
+      case 'claude':
+        return t('multichamber.claude.page.title');
       case 'usage':
         return t('settings.page.usage.title');
       case 'agents':
@@ -686,6 +697,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, forceMobile
         return <SkillsPage view="catalog" />;
       case 'providers':
         return <ProvidersPage />;
+      case 'claude':
+        return <MultichamberClaudePage />;
       case 'usage':
         return <UsagePage />;
       case 'about':

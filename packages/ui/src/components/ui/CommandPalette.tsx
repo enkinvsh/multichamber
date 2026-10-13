@@ -40,7 +40,7 @@ import { createWorktreeSession } from '@/lib/worktreeSessionCreator';
 import { formatShortcutForDisplay, getEffectiveShortcutCombo, shortcutRegistry } from '@/lib/shortcuts';
 import { showOpenCodeStatus } from '@/lib/openCodeStatus';
 import { canUseElectronDesktopIPC, invokeDesktop, isDesktopShell, isVSCodeRuntime, isWebRuntime } from '@/lib/desktop';
-import { useMultichamberLockdown } from '@/lib/multichamber/lockdown';
+import { useMultichamberLockdown, useMultichamberOwnClaude } from '@/lib/multichamber/lockdown';
 import { withoutMultichamberLockedCommands } from '@/lib/multichamber/commands';
 import { SETTINGS_PAGE_METADATA, type SettingsRuntimeContext } from '@/lib/settings/metadata';
 
@@ -407,10 +407,19 @@ export const CommandPalette: React.FC = () => {
   // Settings sub-pages (only show when there's a query)
   // ---------------------------------------------------------------------------
   const routingAvailable = useUIStore((state) => state.routingFeatureAvailable);
+  const multichamberOwnClaude = useMultichamberOwnClaude();
   const settingsRuntimeCtx = React.useMemo<SettingsRuntimeContext>(() => {
     const isDesktop = isDesktopShell();
-    return { isVSCode: isVSCodeRuntime(), isWeb: !isDesktop && isWebRuntime(), isDesktop, isMobile, routingAvailable, multichamberLockdown };
-  }, [isMobile, routingAvailable, multichamberLockdown]);
+    return {
+      isVSCode: isVSCodeRuntime(),
+      isWeb: !isDesktop && isWebRuntime(),
+      isDesktop,
+      isMobile,
+      routingAvailable,
+      multichamberLockdown,
+      multichamberOwnClaude,
+    };
+  }, [isMobile, routingAvailable, multichamberLockdown, multichamberOwnClaude]);
 
   const settingsEntries = React.useMemo<CommandEntry[]>(() => {
     return SETTINGS_PAGE_METADATA

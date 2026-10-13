@@ -14,8 +14,9 @@
 import React from 'react';
 import { z } from 'zod';
 import { create } from 'zustand';
-import { isWebRuntime } from '@/lib/desktop';
+import { isDesktopShell, isWebRuntime } from '@/lib/desktop';
 import { isFilePathWithinDirectory } from '@/lib/path-utils';
+import { isCapacitorApp } from '@/lib/platform';
 import { runtimeFetch } from '@/lib/runtime-fetch';
 
 export const multichamberPolicySchema = z.object({
@@ -25,11 +26,19 @@ export const multichamberPolicySchema = z.object({
   previewOpenUrl: z.string().nullish().transform((value) => value ?? null),
   // Старый сервер не присылает поле: без него серверного STT нет, и в lockdown микрофон остаётся скрыт.
   dictation: z.boolean().nullish().transform((value) => value ?? false),
+  // Свой Claude (MULTICHAMBER_OWN_CLAUDE). Старый сервер поля не знает, тогда страница Claude скрыта.
+  ownClaude: z.boolean().nullish().transform((value) => value ?? false),
 });
 
 type MultichamberPolicy = z.output<typeof multichamberPolicySchema>;
 
-const UNMANAGED_POLICY: MultichamberPolicy = { lockdown: false, fsRoot: null, previewOpenUrl: null, dictation: false };
+const UNMANAGED_POLICY: MultichamberPolicy = {
+  lockdown: false,
+  fsRoot: null,
+  previewOpenUrl: null,
+  dictation: false,
+  ownClaude: false,
+};
 
 /** `unknown`: no answer yet; `failed`: last request failed, retried on demand. */
 type PolicyStatus = 'unknown' | 'loaded' | 'failed';
@@ -99,7 +108,7 @@ export const useMultichamberLockdownConfirmed = (): boolean =>
 
 /** Test seam: pins a loaded policy so store tests run against a known lockdown. */
 export const setMultichamberLockdownForTests = (lockdown: boolean): void => {
-  useMultichamberPolicyStore.setState({ policy: { lockdown, fsRoot: null, previewOpenUrl: null, dictation: false }, status: 'loaded' });
+  useMultichamberPolicyStore.setState({ policy: { ...UNMANAGED_POLICY, lockdown }, status: 'loaded' });
 };
 
 /** Non-reactive read for stores and callbacks. */
@@ -130,7 +139,7 @@ export const useMultichamberFsRoot = (): string | null => {
 
 /** Тестовый шов: загруженная политика с заданным корнем файлов. */
 export const setMultichamberFsRootForTests = (fsRoot: string | null): void => {
-  useMultichamberPolicyStore.setState({ policy: { lockdown: fsRoot !== null, fsRoot, previewOpenUrl: null, dictation: false }, status: 'loaded' });
+  useMultichamberPolicyStore.setState({ policy: { ...UNMANAGED_POLICY, lockdown: fsRoot !== null, fsRoot }, status: 'loaded' });
 };
 
 /**
@@ -154,7 +163,7 @@ export const useMultichamberPreviewOpenUrl = (): string | null => {
 
 /** Тестовый шов: lockdown с настроенным (или выключенным) приватным превью. */
 export const setMultichamberPreviewOpenUrlForTests = (previewOpenUrl: string | null): void => {
-  useMultichamberPolicyStore.setState({ policy: { lockdown: true, fsRoot: null, previewOpenUrl, dictation: false }, status: 'loaded' });
+  useMultichamberPolicyStore.setState({ policy: { ...UNMANAGED_POLICY, lockdown: true, previewOpenUrl }, status: 'loaded' });
 };
 
 /**
@@ -173,7 +182,33 @@ export const useMultichamberDictation = (): boolean => {
 
 /** Тестовый шов: lockdown с серверным STT (или без него). */
 export const setMultichamberDictationForTests = (dictation: boolean): void => {
-  useMultichamberPolicyStore.setState({ policy: { lockdown: true, fsRoot: null, previewOpenUrl: null, dictation }, status: 'loaded' });
+  useMultichamberPolicyStore.setState({ policy: { ...UNMANAGED_POLICY, lockdown: true, dictation }, status: 'loaded' });
+};
+
+/**
+ * Свой Claude поддержан только на браузерной странице, которую раздаёт сам сервер
+ * (на компьютере и на телефоне): через неё пользователи zeny и работают. Electron,
+ * VS Code и приложение Capacitor открывают интерфейс со своего origin, поведение
+ * своего Claude для них не определено, и функция там выключена намеренно.
+ */
+const isServedBrowserPage = (): boolean => isWebRuntime() && !isDesktopShell() && !isCapacitorApp();
+
+/**
+ * Тариф со своей подпиской Claude: страница «Claude» в настройках и открытая
+ * в lockdown страница «Использование». Пока политика не загружена — false.
+ */
+export const useMultichamberOwnClaude = (): boolean => {
+  const ownClaude = useMultichamberPolicyStore((state) => state.status === 'loaded' && state.policy.ownClaude);
+  const loaded = useMultichamberPolicyStore((state) => state.status === 'loaded');
+  React.useEffect(() => {
+    if (!loaded) void loadMultichamberPolicy();
+  }, [loaded]);
+  return ownClaude && isServedBrowserPage();
+};
+
+/** Тестовый шов: lockdown со своим Claude (или без него). */
+export const setMultichamberOwnClaudeForTests = (ownClaude: boolean): void => {
+  useMultichamberPolicyStore.setState({ policy: { ...UNMANAGED_POLICY, lockdown: true, ownClaude }, status: 'loaded' });
 };
 
 /** Правило показа микрофона в композере; вынесено чистой функцией ради тестов. */

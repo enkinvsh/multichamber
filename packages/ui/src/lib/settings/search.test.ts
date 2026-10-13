@@ -16,6 +16,7 @@ const runtimeCtx = {
   isWindowsArm64: false,
   routingAvailable: false,
   multichamberLockdown: false,
+  multichamberOwnClaude: false,
 };
 
 describe('settings search', () => {
@@ -116,5 +117,37 @@ describe('settings search', () => {
     }
     expect(search('scrollbar', true).some((result) => result.id === 'appearance.scrollbars')).toBe(true);
     expect(search('input history scope', true).some((result) => result.id === 'chat.input-history-scope')).toBe(true);
+  });
+
+  test('own Claude opens the Claude page and Usage in lockdown, nothing else', () => {
+    const search = (query: string, multichamberOwnClaude: boolean) => buildSettingsSearchResults({
+      query,
+      runtimeCtx: { ...runtimeCtx, multichamberLockdown: true, multichamberOwnClaude },
+      t,
+      getPageTitle: (page) => page,
+    });
+
+    expect(search('claude', false).some((result) => result.page === 'claude')).toBe(false);
+    expect(search('quota', false).some((result) => result.page === 'usage')).toBe(false);
+
+    expect(search('claude', true).some((result) => result.id === 'claude.account')).toBe(true);
+    expect(search('quota', true).some((result) => result.page === 'usage')).toBe(true);
+    for (const query of ['provider', 'mcp', 'plugin', 'linear']) {
+      const pages = search(query, true).map((result) => result.page);
+      for (const page of ['providers', 'mcp', 'plugins', 'integrations']) {
+        expect(pages).not.toContain(page);
+      }
+    }
+  });
+
+  test('the Claude page stays hidden without own Claude even when unlocked', () => {
+    const results = buildSettingsSearchResults({
+      query: 'claude',
+      runtimeCtx,
+      t,
+      getPageTitle: (page) => page,
+    });
+
+    expect(results.some((result) => result.page === 'claude')).toBe(false);
   });
 });

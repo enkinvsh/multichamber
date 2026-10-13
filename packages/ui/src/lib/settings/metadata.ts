@@ -7,6 +7,7 @@ export type SettingsPageSlug =
   | 'projects'
   | 'remote-instances'
   | 'providers'
+  | 'claude'
   | 'usage'
   | 'agents'
   | 'behavior'
@@ -45,6 +46,8 @@ export interface SettingsRuntimeContext {
   routingAvailable: boolean;
   /** Whether the server runs in MultiChamber lockdown (`GET /api/multichamber/policy`). */
   multichamberLockdown: boolean;
+  /** Своя подписка Claude у тарифа MultiChamber (`useMultichamberOwnClaude`). */
+  multichamberOwnClaude: boolean;
 }
 
 export interface SettingsPageMeta {
@@ -94,6 +97,16 @@ const BASE_SETTINGS_PAGE_METADATA: readonly SettingsPageMeta[] = [
     group: 'opencode',
     kind: 'split',
     keywords: ['provider', 'providers', 'models', 'model', 'api key', 'api keys', 'openai', 'anthropic', 'ollama', 'credentials'],
+  },
+  {
+    slug: 'claude',
+    title: 'Claude',
+    group: 'opencode',
+    kind: 'single',
+    keywords: ['claude', 'anthropic', 'subscription', 'pro', 'max', 'sonnet', 'opus', 'limits', 'oauth'],
+    // Страница Providers в lockdown закрыта. Свой Claude подключают в кабинете zeny,
+    // здесь только ссылка туда и кнопка «Применить».
+    isAvailable: (ctx) => ctx.multichamberOwnClaude,
   },
   {
     slug: 'usage',
@@ -249,12 +262,22 @@ const MULTICHAMBER_LOCKED_SETTINGS_PAGES: ReadonlySet<SettingsPageSlug> = new Se
   'extensions',
 ]);
 
+/**
+ * Закрытые страницы, которые свой Claude открывает: лимиты подписки видны на
+ * «Использовании». Сервер читать квоты не мешает (lockdown-guard закрывает
+ * только запись), а провайдер `claude` берёт их у прокси подписки.
+ */
+const MULTICHAMBER_OWN_CLAUDE_PAGES: ReadonlySet<SettingsPageSlug> = new Set<SettingsPageSlug>(['usage']);
+
 const withMultichamberLockdown = (page: SettingsPageMeta): SettingsPageMeta => {
   if (!MULTICHAMBER_LOCKED_SETTINGS_PAGES.has(page.slug)) return page;
   const baseAvailable = page.isAvailable;
+  const ownClaudeOpens = MULTICHAMBER_OWN_CLAUDE_PAGES.has(page.slug);
   return {
     ...page,
-    isAvailable: (ctx) => !ctx.multichamberLockdown && (baseAvailable ? baseAvailable(ctx) : true),
+    isAvailable: (ctx) =>
+      (!ctx.multichamberLockdown || (ownClaudeOpens && ctx.multichamberOwnClaude))
+      && (baseAvailable ? baseAvailable(ctx) : true),
   };
 };
 
@@ -326,6 +349,8 @@ export function getSettingsNavIcon(slug: SettingsPageSlug): IconName | null {
 
     case 'providers':
       return 'cloud';
+    case 'claude':
+      return 'sparkling';
     case 'agents':
       return 'ai-agent';
     case 'behavior':

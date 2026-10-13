@@ -12,6 +12,12 @@ describe('multichamberPolicySchema', () => {
     expect(multichamberPolicySchema.parse({ lockdown: true, fsRoot: '/workspace', dictation: true }).dictation).toBe(true);
     expect(multichamberPolicySchema.parse({ lockdown: true, fsRoot: null, dictation: null }).dictation).toBe(false);
   });
+
+  test('older server without ownClaude means no own Claude', () => {
+    expect(multichamberPolicySchema.parse({ lockdown: true, fsRoot: null }).ownClaude).toBe(false);
+    expect(multichamberPolicySchema.parse({ lockdown: true, fsRoot: null, ownClaude: null }).ownClaude).toBe(false);
+    expect(multichamberPolicySchema.parse({ lockdown: true, fsRoot: null, ownClaude: true }).ownClaude).toBe(true);
+  });
 });
 
 describe('isComposerDictationAllowed', () => {
