@@ -11,6 +11,7 @@ export const createNotificationTriggerRuntime = (deps) => {
     broadcastUiNotification,
     sendPushToAllUiSessions,
     sendApnsToAllUiSessions,
+    sendZenyNotification,
     isAnyInteractiveClientVisible,
     buildOpenCodeUrl,
     getOpenCodeAuthHeaders,
@@ -92,6 +93,9 @@ export const createNotificationTriggerRuntime = (deps) => {
         : Promise.resolve(sendApnsToAllUiSessions?.(toApnsGenericPayload(payload), options)).catch((error) => {
             console.warn('[APNs] fanout failed:', error?.message ?? error);
           }),
+      Promise.resolve(sendZenyNotification?.(payload, options)).catch((error) => {
+        console.warn('[ZenyEvents] fanout failed:', error?.message ?? error);
+      }),
     ]);
   };
 
@@ -371,6 +375,9 @@ export const createNotificationTriggerRuntime = (deps) => {
         let title = `${formatMode(info?.mode)} agent is ready`;
         let body = `${formatModelId(info?.modelID)} completed the task`;
         let sessionName = '';
+        let messageText = '';
+        let projectName = null;
+        let worktreeDir = notificationDirectory || null;
 
         try {
           const templates = settings.notificationTemplates || {};
@@ -381,12 +388,15 @@ export const createNotificationTriggerRuntime = (deps) => {
 
           const variables = await buildTemplateVariables(payload, sessionId);
           sessionName = typeof variables.session_name === 'string' ? variables.session_name : sessionName;
+          projectName = variables.project_name || null;
+          worktreeDir = variables.worktree || worktreeDir;
 
           const messageId = info?.id;
           let lastMessage = extractLastMessageText(payload);
           if (!lastMessage) {
             lastMessage = await fetchLastAssistantMessageText(sessionId, messageId);
           }
+          messageText = lastMessage || '';
 
           variables.last_message = await prepareNotificationLastMessage({
             message: lastMessage,
@@ -426,6 +436,12 @@ export const createNotificationTriggerRuntime = (deps) => {
               sessionName,
               type: 'ready',
             },
+            zeny: {
+              eventId: `ready:${sessionId}:${info?.id || now}`,
+              directory: worktreeDir,
+              projectName,
+              message: messageText || body,
+            },
           },
           { requireNoSse: true },
         );
@@ -447,15 +463,21 @@ export const createNotificationTriggerRuntime = (deps) => {
         let title = 'Tool error';
         let body = 'An error occurred';
         let sessionName = '';
+        let messageText = '';
+        let projectName = null;
+        let worktreeDir = notificationDirectory || null;
 
         try {
           const variables = await buildTemplateVariables(payload, sessionId);
           sessionName = typeof variables.session_name === 'string' ? variables.session_name : sessionName;
+          projectName = variables.project_name || null;
+          worktreeDir = variables.worktree || worktreeDir;
           const errorMessageId = info?.id;
           let lastMessage = extractLastMessageText(payload);
           if (!lastMessage) {
             lastMessage = await fetchLastAssistantMessageText(sessionId, errorMessageId);
           }
+          messageText = lastMessage || '';
 
           variables.last_message = await prepareNotificationLastMessage({
             message: lastMessage,
@@ -496,6 +518,12 @@ export const createNotificationTriggerRuntime = (deps) => {
               sessionName,
               type: 'error',
             },
+            zeny: {
+              eventId: `error:${sessionId}:${info?.id || now}`,
+              directory: worktreeDir,
+              projectName,
+              message: messageText || body,
+            },
           },
           { requireNoSse: true },
         );
@@ -533,10 +561,15 @@ export const createNotificationTriggerRuntime = (deps) => {
             : header || 'Input needed';
         let body = questionText || 'Agent is waiting for your response';
         let sessionName = '';
+        let projectName = null;
+        let worktreeDir = notificationDirectory || null;
+        const questionEventId = payload.properties?.id || payload.properties?.requestID || payload.properties?.requestId || Date.now();
 
         try {
           const variables = await buildTemplateVariables(payload, sessionId);
           sessionName = typeof variables.session_name === 'string' ? variables.session_name : sessionName;
+          projectName = variables.project_name || null;
+          worktreeDir = variables.worktree || worktreeDir;
           variables.last_message = questionText || header || '';
 
           const templates = settings.notificationTemplates || {};
@@ -574,6 +607,12 @@ export const createNotificationTriggerRuntime = (deps) => {
               sessionId,
               sessionName,
               type: 'question',
+            },
+            zeny: {
+              eventId: `question:${sessionId}:${questionEventId}`,
+              directory: worktreeDir,
+              projectName,
+              message: questionText || header || body,
             },
           },
           { requireNoSse: true },
@@ -652,10 +691,15 @@ export const createNotificationTriggerRuntime = (deps) => {
         let title = 'Permission required';
         let body = fallbackMessage;
         let sessionName = '';
+        let projectName = null;
+        let worktreeDir = notificationDirectory || null;
+        const permEventId = requestId || Date.now();
 
         try {
           const variables = await buildTemplateVariables(payload, sessionId);
           sessionName = typeof variables.session_name === 'string' ? variables.session_name : sessionName;
+          projectName = variables.project_name || null;
+          worktreeDir = variables.worktree || worktreeDir;
           variables.last_message = fallbackMessage;
 
           const templates = settings.notificationTemplates || {};
@@ -698,6 +742,12 @@ export const createNotificationTriggerRuntime = (deps) => {
               sessionName,
               type: 'permission',
             },
+            zeny: {
+              eventId: `permission:${sessionId}:${permEventId}`,
+              directory: worktreeDir,
+              projectName,
+              message: fallbackMessage || body,
+            },
           },
           { requireNoSse: true },
         );
@@ -738,6 +788,12 @@ export const createNotificationTriggerRuntime = (deps) => {
           sessionId,
           sessionName,
           type,
+        },
+        zeny: {
+          eventId: `${type}:${sessionId}:${Date.now()}`,
+          directory: directory || null,
+          projectName: null,
+          message: body || title || '',
         },
       },
       { requireNoSse: true },

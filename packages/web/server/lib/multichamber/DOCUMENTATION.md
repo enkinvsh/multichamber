@@ -181,6 +181,7 @@ Upstream files with own Claude hooks: `lib/settings/metadata.ts` (page `claude`,
 | `MULTICHAMBER_SUPPORT_URL` | Menu item "Support" ("Поддержка"), new tab. | hidden |
 | `MULTICHAMBER_LOGOUT_URL` | Menu item "Log out" ("Выйти"), same tab. | hidden |
 | `MULTICHAMBER_BUDGET_URL` | Upstream of `GET /api/multichamber/budget`. Turns on the budget pill and banners. | route answers 404, no budget UI |
+| `MULTICHAMBER_ZENY_EVENTS_URL` | Upstream of outbound Zeny slot events (`zeny-events.js`): sends the project list on startup and project changes, and forwards session notification triggers (`ready`, `error`, `question`, `permission`, `goal_*`) from `fanoutPush`. | disabled |
 
 Links take an absolute `http(s)` URL or a path on this origin such as `/account`. With all five link variables unset there is no account menu. A value that fails validation is dropped and logged as `[multichamber] ignoring invalid <VARIABLE>`. The value itself never reaches the log, because links and the budget URL can carry tokens. A missing folder logs `[multichamber] <VARIABLE> does not exist, using stock files`.
 

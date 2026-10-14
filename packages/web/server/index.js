@@ -41,6 +41,7 @@ import { createTerminalRuntime } from './lib/terminal/runtime.js';
 import { createDictationRuntime } from './lib/dictation/runtime.js';
 import { createMultichamberDevServerFilter, installMultichamber, readMultichamberPolicy } from './lib/multichamber/install.js';
 import { createMultichamberBrand } from './lib/multichamber/brand.js';
+import { createZenyEventsClient } from './lib/multichamber/zeny-events.js';
 import { createHostGuard } from './lib/multichamber/host-guard.js';
 import { startPreviewProxy } from './lib/multichamber/preview-proxy-process.js';
 import { isLockdownEnabled } from './lib/multichamber/lockdown-guard.js';
@@ -423,7 +424,17 @@ const readSettingsFromDiskMigrated = (...args) => settingsRuntime.readSettingsFr
 const readSettingsFromDisk = (...args) => settingsRuntime.readSettingsFromDisk(...args);
 const readSettingsFromDiskStrict = (...args) => settingsRuntime.readSettingsFromDiskStrict(...args);
 const writeSettingsToDisk = (...args) => settingsRuntime.writeSettingsToDisk(...args);
-const persistSettings = (...args) => settingsRuntime.persistSettings(...args);
+const zenyEventsClient = createZenyEventsClient({ readSettings: readSettingsFromDiskMigrated });
+const persistSettings = async (...args) => {
+  const updated = await settingsRuntime.persistSettings(...args);
+  if (zenyEventsClient && args[0] && 'projects' in Object(args[0])) {
+    void zenyEventsClient.sendProjects(updated?.projects);
+  }
+  return updated;
+};
+if (zenyEventsClient) {
+  void zenyEventsClient.sendProjects();
+}
 
 const requestSecurityRuntime = createRequestSecurityRuntime({
   readSettingsFromDiskMigrated,
@@ -815,6 +826,7 @@ const notificationTriggerRuntime = createNotificationTriggerRuntime({
   broadcastUiNotification,
   sendPushToAllUiSessions,
   sendApnsToAllUiSessions,
+  sendZenyNotification: zenyEventsClient ? (payload) => zenyEventsClient.sendFromNotification(payload) : undefined,
   isAnyInteractiveClientVisible,
   buildOpenCodeUrl,
   getOpenCodeAuthHeaders,
